@@ -1,37 +1,11 @@
-/*    Copyright (c) 2010-2013, Delft University of Technology
- *    All rights reserved.
+/*    Copyright (c) 2010-2018, Delft University of Technology
+ *    All rigths reserved
  *
- *    Redistribution and use in source and binary forms, with or without modification, are
- *    permitted provided that the following conditions are met:
- *      - Redistributions of source code must retain the above copyright notice, this list of
- *        conditions and the following disclaimer.
- *      - Redistributions in binary form must reproduce the above copyright notice, this list of
- *        conditions and the following disclaimer in the documentation and/or other materials
- *        provided with the distribution.
- *      - Neither the name of the Delft University of Technology nor the names of its contributors
- *        may be used to endorse or promote products derived from this software without specific
- *        prior written permission.
- *
- *    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS
- *    OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *    MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *    COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- *    EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *    GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- *    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- *    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- *    OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *    Changelog
- *      YYMMDD    Author            Comment
- *      120522    A. Ronse          First creation of code.
- *
- *    References
- *      Williams, Dr. David R., "Moon Fact Sheet", NASA (National Space Science Data Center),
- *         http://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html, last accessed: 22 May 2012
- *
- *    Notes
- *
+ *    This file is part of the Tudat. Redistribution and use in source and
+ *    binary forms, with or without modification, are permitted exclusively
+ *    under the terms of the Modified BSD license. You should have received
+ *    a copy of the license with this file. If not, please or visit:
+ *    http://tudat.tudelft.nl/LICENSE.
  */
 
 #include <Tudat/SimulationSetup/tudatSimulationHeader.h>
@@ -59,6 +33,7 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
+//! Main code.
 int main( )
 {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -84,16 +59,16 @@ int main( )
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Load Spice kernels.
+    // Load Spice kernels
     spice_interface::loadStandardSpiceKernels( );
 
-    // Set simulation time settings.
+    // Set simulation time settings
     const double simulationStartEpoch = 7.0 * tudat::physical_constants::JULIAN_YEAR +
             30.0 * 6.0 * tudat::physical_constants::JULIAN_DAY;
     const double simulationEndEpoch = //100.0 + simulationStartEpoch;
             1.0 * tudat::physical_constants::JULIAN_DAY + simulationStartEpoch;
 
-    // Define body settings for simulation.
+    // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
     bodiesToCreate.push_back( "Sun" );
     bodiesToCreate.push_back( "Mars" );
@@ -119,7 +94,7 @@ int main( )
         interpolators::use_boundary_value, interpolators::use_boundary_value, interpolators::use_default_value };
     std::vector< double > extrapolationValues = { 0.0, 0.0, 186.813, 8183.0, 1.667 };
 
-    // Create body objects.
+    // Create body objects
     std::map< std::string, boost::shared_ptr< BodySettings > > bodySettings =
             getDefaultBodySettings( bodiesToCreate, simulationStartEpoch - 300.0, simulationEndEpoch + 300.0 );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
@@ -137,7 +112,7 @@ int main( )
     ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Create spacecraft object.
+    // Create spacecraft object
     bodyMap[ "Satellite" ] = boost::make_shared< simulation_setup::Body >( );
     const double vehicleMass = 1000.0;
     bodyMap[ "Satellite" ]->setConstantBodyMass( vehicleMass );
@@ -222,7 +197,7 @@ int main( )
     ///////////////////////             DEFINE INITIAL CONDITIONS              ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Set Keplerian elements for Satellie.
+    // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
     initialStateInKeplerianElements( semiMajorAxisIndex ) = 27228500;
     initialStateInKeplerianElements( eccentricityIndex ) = 0.869218;
@@ -249,19 +224,19 @@ int main( )
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
             boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch );
 
-    // Create propagator settings for rotation.
+    // Create propagator settings for rotation
     boost::shared_ptr< RotationalStatePropagatorSettings< double > > rotationalPropagatorSettings =
             boost::make_shared< RotationalStatePropagatorSettings< double > >
             ( torqueModelMap, bodiesToPropagate, rotationalInitialState, terminationSettings,
               exponential_map );
 
-    // Create propagation settings for translational dynamics.
+    // Create propagation settings for translational dynamics
     boost::shared_ptr< TranslationalStatePropagatorSettings< double > > translationalPropagatorSettings =
             boost::make_shared< TranslationalStatePropagatorSettings< double > >
             ( centralBodies, accelerationModelMap, bodiesToPropagate, translationalInitialState,
               terminationSettings, cowell );
 
-    // Create full propagator settings for rotation.
+    // Create full propagator settings for rotation
     std::vector< boost::shared_ptr< SingleArcPropagatorSettings< double > > > propagatorSettingsList;
     propagatorSettingsList.push_back( translationalPropagatorSettings );
     propagatorSettingsList.push_back( rotationalPropagatorSettings );
@@ -277,7 +252,7 @@ int main( )
     ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Create simulation object and propagate dynamics.
+    // Create simulation object and propagate dynamics
     SingleArcDynamicsSimulator< > dynamicsSimulator(
                 bodyMap, integratorSettings, propagatorSettings, true, false, false );
     std::map< double, Eigen::VectorXd > fullIntegrationResult = dynamicsSimulator.getEquationsOfMotionNumericalSolution( );
@@ -308,7 +283,7 @@ int main( )
     ///////////////////////        PROVIDE OUTPUT TO CONSOLE AND FILES           //////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Write perturbed satellite propagation history to file.
+    // Write perturbed satellite propagation history to file
     writeDataMapToTextFile( cartesianIntegrationResult,
                             "translational.dat", getOutputPath( ),
                             "",
@@ -316,7 +291,7 @@ int main( )
                             std::numeric_limits< double >::digits10,
                             "," );
 
-    // Final statement.
-    // The exit code EXIT_SUCCESS indicates that the program was successfully executed.
+    // Final statement
+    // The exit code EXIT_SUCCESS indicates that the program was successfully executed
     return EXIT_SUCCESS;
 }
