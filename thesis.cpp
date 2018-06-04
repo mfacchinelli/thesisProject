@@ -10,6 +10,8 @@
 
 #include <Tudat/SimulationSetup/tudatSimulationHeader.h>
 
+#include "Tudat/Basics/utilities.h"
+
 //! Get path for output directory.
 static inline std::string getOutputPath( const std::string& extraDirectory = "" )
 {
@@ -65,8 +67,7 @@ int main( )
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * tudat::physical_constants::JULIAN_YEAR +
             30.0 * 6.0 * tudat::physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = //100.0 + simulationStartEpoch;
-            1.0 * tudat::physical_constants::JULIAN_DAY + simulationStartEpoch;
+    const double simulationEndEpoch = 50.0 * tudat::physical_constants::JULIAN_DAY + simulationStartEpoch;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -75,16 +76,11 @@ int main( )
 
     // Tabulated atmosphere settings
     std::map< int, std::string > tabulatedAtmosphereFiles;
-    tabulatedAtmosphereFiles[ 0 ] = getAtmosphereTablesPath( ) +
-            "MCDMeanAtmosphereTimeAverage/density.dat";
-    tabulatedAtmosphereFiles[ 1 ] = getAtmosphereTablesPath( ) +
-            "MCDMeanAtmosphereTimeAverage/pressure.dat";
-    tabulatedAtmosphereFiles[ 2 ] = getAtmosphereTablesPath( ) +
-            "MCDMeanAtmosphereTimeAverage/temperature.dat";
-    tabulatedAtmosphereFiles[ 3 ] = getAtmosphereTablesPath( ) +
-            "MCDMeanAtmosphereTimeAverage/gasConstant.dat";
-    tabulatedAtmosphereFiles[ 4 ] = getAtmosphereTablesPath( ) +
-            "MCDMeanAtmosphereTimeAverage/specificHeatRatio.dat";
+    tabulatedAtmosphereFiles[ 0 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/density.dat";
+    tabulatedAtmosphereFiles[ 1 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/pressure.dat";
+    tabulatedAtmosphereFiles[ 2 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/temperature.dat";
+    tabulatedAtmosphereFiles[ 3 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/gasConstant.dat";
+    tabulatedAtmosphereFiles[ 4 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/specificHeatRatio.dat";
     std::vector< AtmosphereDependentVariables > atmosphereDependentVariables = {
         density_dependent_atmosphere, pressure_dependent_atmosphere, temperature_dependent_atmosphere,
         gas_constant_dependent_atmosphere, specific_heat_ratio_dependent_atmosphere };
@@ -113,33 +109,44 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create spacecraft object
-    bodyMap[ "Satellite" ] = boost::make_shared< simulation_setup::Body >( );
+    bodyMap[ "Satellite" ] = boost::make_shared< Body >( );
     const double vehicleMass = 1000.0;
     bodyMap[ "Satellite" ]->setConstantBodyMass( vehicleMass );
 
     Eigen::Matrix3d inertiaTensor = Eigen::Matrix3d::Zero( );
-    inertiaTensor( 0, 0 ) = 0.3615;
-    inertiaTensor( 1, 1 ) = 0.4265;
-    inertiaTensor( 2, 2 ) = 0.5024;
-    inertiaTensor *= ( 0.1 * 25.0 * 5.0E3 );
+    inertiaTensor( 0, 0 ) = 5750.0;
+    inertiaTensor( 1, 1 ) = 1200.0;
+    inertiaTensor( 2, 2 ) = 5200.0;
     bodyMap[ "Satellite" ]->setBodyInertiaTensor( inertiaTensor );
 
     // Aerodynamic coefficients from file
-    std::map< int, std::string > aerodynamicCoefficientFiles;
-    aerodynamicCoefficientFiles[ 0 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
-                                       "University/Master Thesis/Code/MATLAB/data/MRODragCoefficients.txt";
-    aerodynamicCoefficientFiles[ 2 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
-                                       "University/Master Thesis/Code/MATLAB/data/MROLiftCoefficients.txt";
-    aerodynamicCoefficientFiles[ 4 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
-                                       "University/Master Thesis/Code/MATLAB/data/MROMomentCoefficients.txt";
+    std::map< int, std::string > aerodynamicForceCoefficientFiles;
+    std::map< int, std::string > aerodynamicMomentCoefficientFiles;
+    aerodynamicForceCoefficientFiles[ 0 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
+                                            "University/Master Thesis/Code/MATLAB/data/MRODragCoefficients.txt";
+    aerodynamicForceCoefficientFiles[ 2 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
+                                            "University/Master Thesis/Code/MATLAB/data/MROLiftCoefficients.txt";
+    aerodynamicMomentCoefficientFiles[ 1 ] = "/Users/Michele/Library/Mobile Documents/com~apple~CloudDocs/"
+                                             "University/Master Thesis/Code/MATLAB/data/MROMomentCoefficients.txt";
 
     // Create aerodynamic coefficient settings
     const double referenceAreaAerodynamic = 37.5;
+    const double referenceLengthAerodynamic = 2.5;
+    const Eigen::Vector3d momentReferencePoint = Eigen::Vector3d::Zero( );
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
-            simulation_setup::readTabulatedAerodynamicCoefficientsFromFiles(
-                aerodynamicCoefficientFiles, referenceAreaAerodynamic,
+            readTabulatedAerodynamicCoefficientsFromFiles(
+                aerodynamicForceCoefficientFiles, aerodynamicMomentCoefficientFiles, referenceLengthAerodynamic,
+                referenceAreaAerodynamic, referenceLengthAerodynamic, momentReferencePoint,
                 boost::assign::list_of( aerodynamics::angle_of_attack_dependent )( aerodynamics::altitude_dependent ),
                 true, true );
+
+    //    // Set constant aerodynamic drag coefficient
+    //    const Eigen::Vector3d aerodynamicForceCoefficients = 2.2 * Eigen::Vector3d::UnitX( );
+    //    const Eigen::Vector3d aerodynamicMomentCoefficients = 0.3 * Eigen::Vector3d::UnitY( );
+    //    boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
+    //            boost::make_shared< ConstantAerodynamicCoefficientSettings >(
+    //                referenceLengthAerodynamic, referenceAreaAerodynamic, referenceLengthAerodynamic,
+    //                momentReferencePoint, aerodynamicForceCoefficients, aerodynamicMomentCoefficients, true, true );
 
     // Constant radiation pressure variables
     const double referenceAreaRadiation = 37.5;
@@ -191,6 +198,7 @@ int main( )
     // Define and set torque settings
     SelectedTorqueMap torqueMap;
     torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( aerodynamic_torque ) );
+    torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( second_order_gravitational_torque ) );
     TorqueModelMap torqueModelMap = createTorqueModelsMap( bodyMap, torqueMap );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -211,10 +219,9 @@ int main( )
                 initialStateInKeplerianElements, marsGravitationalParameter );
 
     // Define initial rotational state
-    Eigen::Quaterniond initialRotation = Eigen::Quaterniond( Eigen::Matrix3d::Identity( ) );
-    Eigen::Vector7d rotationalInitialState = Eigen::Vector7d::Zero( 7 );
-    rotationalInitialState.segment( 0, 4 ) = linear_algebra::convertQuaternionToVectorFormat( initialRotation );
-    rotationalInitialState( 4 ) = 1.0E-4;
+    Eigen::Quaterniond initialStateInQuaternionElements = Eigen::Quaterniond( Eigen::Matrix3d::Identity( ) );
+    Eigen::Vector7d rotationalInitialState = Eigen::Vector7d::Zero( );
+    rotationalInitialState.segment( 0, 4 ) = linear_algebra::convertQuaternionToVectorFormat( initialStateInQuaternionElements );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE PROPAGATION SETTINGS            ////////////////////////////////////////////
@@ -230,23 +237,38 @@ int main( )
             ( torqueModelMap, bodiesToPropagate, rotationalInitialState, terminationSettings,
               exponential_map );
 
-    // Create propagation settings for translational dynamics
-    boost::shared_ptr< TranslationalStatePropagatorSettings< double > > translationalPropagatorSettings =
-            boost::make_shared< TranslationalStatePropagatorSettings< double > >
-            ( centralBodies, accelerationModelMap, bodiesToPropagate, translationalInitialState,
-              terminationSettings, cowell );
-
-    // Create full propagator settings for rotation
+    // Select propagator and integrator based on user request
+    const bool useVariableStepSize = true;
     std::vector< boost::shared_ptr< SingleArcPropagatorSettings< double > > > propagatorSettingsList;
-    propagatorSettingsList.push_back( translationalPropagatorSettings );
-    propagatorSettingsList.push_back( rotationalPropagatorSettings );
+    boost::shared_ptr< IntegratorSettings< > > integratorSettings;
+    if ( useVariableStepSize )
+    {
+        // Create propagation settings for translational dynamics
+        boost::shared_ptr< TranslationalStatePropagatorSettings< double > > translationalPropagatorSettings =
+                boost::make_shared< TranslationalStatePropagatorSettings< double > >(
+                    centralBodies, accelerationModelMap, bodiesToPropagate, translationalInitialState,
+                    terminationSettings, unified_state_model_quaternions );
+        propagatorSettingsList.push_back( translationalPropagatorSettings );
 
+        // Integrator settings
+        integratorSettings = boost::make_shared< RungeKuttaVariableStepSizeSettings< > >(
+                    rungeKuttaVariableStepSize, simulationStartEpoch, 100.0,
+                    RungeKuttaCoefficients::rungeKuttaFehlberg56, 1e-5, 1e5, 1e-11, 1e-11 );
+    }
+    else
+    {
+        // Create propagation settings for translational dynamics
+        boost::shared_ptr< TranslationalStatePropagatorSettings< double > > translationalPropagatorSettings =
+                boost::make_shared< TranslationalStatePropagatorSettings< double > >(
+                    centralBodies, accelerationModelMap, bodiesToPropagate, translationalInitialState, terminationSettings, cowell );
+        propagatorSettingsList.push_back( translationalPropagatorSettings );
+
+        // Integrator settings
+        integratorSettings = boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, 0.1 );
+    }
+    propagatorSettingsList.push_back( rotationalPropagatorSettings );
     boost::shared_ptr< PropagatorSettings< double > > propagatorSettings =
             boost::make_shared< MultiTypePropagatorSettings< double > >( propagatorSettingsList, terminationSettings );
-
-    // Integrator settings
-    boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
-                rungeKutta4, simulationStartEpoch, 0.1 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
@@ -256,9 +278,9 @@ int main( )
     SingleArcDynamicsSimulator< > dynamicsSimulator(
                 bodyMap, integratorSettings, propagatorSettings, true, false, false );
     std::map< double, Eigen::VectorXd > fullIntegrationResult = dynamicsSimulator.getEquationsOfMotionNumericalSolution( );
-    std::map< double, Eigen::VectorXd > cartesianIntegrationResult;
-    std::map< double, Eigen::VectorXd > keplerianIntegrationResult;
-    std::map< double, Eigen::VectorXd > rotationIntegrationResult;
+    std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
+    std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
+    std::map< double, Eigen::VectorXd > rotationalIntegrationResult;
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
@@ -271,12 +293,12 @@ int main( )
         currentCartesianState = currentFullState.segment( 0, 6 );
 
         // Store translational and rotational states
-        cartesianIntegrationResult[ stateIterator->first ] = currentCartesianState;
-        rotationIntegrationResult[ stateIterator->first ] = currentFullState.segment( 6, 7 );
+        cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
+        rotationalIntegrationResult[ stateIterator->first ] = currentFullState.segment( 6, 7 );
 
         // Copute current Keplerian state
-        keplerianIntegrationResult[ stateIterator->first ] =
-                convertCartesianToKeplerianElements( currentCartesianState, marsGravitationalParameter );
+        keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements( currentCartesianState,
+                                                                                                               marsGravitationalParameter );
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -284,12 +306,9 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Write perturbed satellite propagation history to file
-    writeDataMapToTextFile( cartesianIntegrationResult,
-                            "translational.dat", getOutputPath( ),
-                            "",
-                            std::numeric_limits< double >::digits10,
-                            std::numeric_limits< double >::digits10,
-                            "," );
+    writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "CartesianTranslational.dat", getOutputPath( ) );
+    writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "KeplerianTranslational.dat", getOutputPath( ) );
+    writeDataMapToTextFile( rotationalIntegrationResult, "rotational.dat", getOutputPath( ) );
 
     // Final statement
     // The exit code EXIT_SUCCESS indicates that the program was successfully executed
