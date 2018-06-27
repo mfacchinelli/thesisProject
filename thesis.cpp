@@ -14,12 +14,18 @@
 
 #include "Tudat/Basics/utilities.h"
 #include "Tudat/Mathematics/Filters/unscentedKalmanFilter.h"
+#include "Tudat/Astrodynamics/Propagators/rotationalMotionQuaternionsStateDerivative.h"
 
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/control.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/guidance.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/instrument.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/navigation.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/onboardComputer.h"
+#include "Tudat/Astrodynamics/GuidanceNavigationControl/controlSystem.h"
+#include "Tudat/Astrodynamics/GuidanceNavigationControl/guidanceSystem.h"
+#include "Tudat/Astrodynamics/GuidanceNavigationControl/navigationSystem.h"
+
+#include "Tudat/Astrodynamics/SystemModels/navigationInstrumentsModel.h"
+#include "Tudat/Astrodynamics/SystemModels/onboardComputerModel.h"
+
+//! Typedefs for current file.
+typedef Eigen::Matrix< double, 13, 1 > Eigen::Vector13d;
+typedef Eigen::Matrix< double, 13, 13 > Eigen::Matrix13d;
 
 //! Get path for output directory.
 static inline std::string getOutputPath( const std::string& extraDirectory = "" )
@@ -44,40 +50,92 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
+//! Function to compute the transformation matrix from aerodynamic frame to inertial frame.
+Eigen::Matrix3d getAerodynamicToInertialFrameTransformationMatrix( const Eigen::Vector13d& currentStateVector )
+{
+    Eigen::Quaterniond currentQuaternionFromBodyFixedToInertialFrame = Eigen::Quaterniond( currentStateVector.segment( 6, 4 ) );
+    Eigen::Matrix3d transformationFromInertialToBodyFixedFrame =
+            currentQuaternionFromBodyFixedToInertialFrame.inverse( ).toRotationMatrix( );
+
+    Eigen::Vector3d currentVelocityInBodyFrame = transformationFromInertialToBodyFixedFrame * currentStateVector.segment( 3, 3 );
+    double currentVelocityMagnitude = currentVelocityInBodyFrame.norm( );
+    Eigen::Vector3d currentVelocityInBodyFrameXYPlane;
+    currentVelocityInBodyFrameXYPlane << currentVelocityInBodyFrame.segment( 0, 2 ), Eigen::Vector1d::Zero( );
+    double currentVelocityInBodyFrameXYPlaneMagnitude = currentVelocityInBodyFrameXYPlane.norm( );
+    Eigen::Vector3d currentVelocityInBodyFrameXAxis;
+    currentVelocityInBodyFrameXAxis << currentVelocityInBodyFrame.segment( 0, 1 ), Eigen::Vector2d::Zero( );
+
+    double angleOfSideSlip = std::acos( currentVelocityInBodyFrame.dot( currentVelocityInBodyFrameXYPlane ) / currentVelocityMagnitude /
+                                        currentVelocityInBodyFrameXYPlaneMagnitude );
+    double angleOfAttack = std::acos( currentVelocityInBodyFrameXYPlane.dot( currentVelocityInBodyFrameXAxis ) /
+                                      currentVelocityInBodyFrameXYPlaneMagnitude / currentVelocityInBodyFrame[ 0 ] );
+
+    Eigen::Matrix3d transformationFromBodyToAerodynamicFrame =
+            tudat::reference_frames::getBodyToAirspeedBasedAerodynamicFrameTransformationMatrix( angleOfAttack, angleOfSideSlip );
+    return transformationFromInertialToBodyFixedFrame.inverse( ) * transformationFromBodyToAerodynamicFrame.inverse( );
+}
+
 //! Function to compute the state derivative for both the translational and rotational motion of the spacecraft.
-typedef Eigen::Matrix< double, 13, 1 > Eigen::Vector13d;
-Eigen::Vector13d stateDerivativeFromOnboardModels( const double currentTime, const Eigen::VectorXd& currentStateVector,
-                                                   const Eigen::VectorXd& currentControlVector, const double marsGravitationalParameter,
-                                                   const double marsRadius, const double secondOrderSphericalHarmonicCoefficient,
-                                                   const double currentAirDensity, const double ballisticCoefficient,
-                                                   const double dragCoefficient, const double liftCoefficient,
-                                                   const Eigen::Matrix3d& inertiaMatrix )
+Eigen::Vector13d stateDerivativeFromOnboardModels( const double currentTime, const Eigen::Vector13d& currentStateVector,
+                                                   const Eigen::Vector3d& currentControlVector,
+                                                   const double marsGravitationalParameter, const double marsRadius,
+                                                   const double secondOrderSphericalHarmonicCoefficient,
+                                                   const Eigen::Vector6d& aerodynamicCoefficients, const double mass,
+                                                   const double referenceArea, const double referenceLength,
+                                                   const Eigen::Matrix3d inertiaMatrix, const double currentAirDensity )
 {
     // Declare state derivative vector
     Eigen::Vector13d stateDerivative;
 
-    // Add translational motion
-    stateDerivative[ 0 ] = currentStateVector[ 3 ];
-    stateDerivative[ 1 ] = currentStateVector[ 4 ];
-    stateDerivative[ 2 ] = currentStateVector[ 5 ];
+    ///////////////////////     TRANSLATIONAL MOTION                ////////////////////////////////////////////
 
+    // Kinematics
+    stateDerivative.segment( 0, 3 ) = currentStateVector.segment( 3, 3 );
+
+    // Dynamics: gravitational terms
     double currentPositionInZDirectionSquared = 5.0 * currentStateVector[ 2 ] * currentStateVector[ 2 ];
     double currentRadialDistance = currentStateVector.segment( 0, 3 ).norm( );
     double currentRadialDistanceSquared = currentRadialDistance * currentRadialDistance;
     double centralGravitationalTerm = - marsGravitationalParameter / currentRadialDistanceSquared;
     double gravityRecurringTerm = 3.0 / 2.0 * secondOrderSphericalHarmonicCoefficient * std::pow( marsRadius /
-                                                                                           currentRadialDistanceSquared, 2 );
+                                                                                                  currentRadialDistanceSquared, 2 );
+    Eigen::Vector3d currentRadialDistanceUnitVector = currentStateVector.segment( 0, 3 ).normalized( );
     stateDerivative[ 3 ] = centralGravitationalTerm * ( 1.0 + gravityRecurringTerm * ( currentRadialDistanceSquared -
                                                                                        currentPositionInZDirectionSquared ) );
     stateDerivative[ 4 ] = stateDerivative[ 3 ];
     stateDerivative[ 5 ] = centralGravitationalTerm * ( 1.0 + gravityRecurringTerm * ( 3.0 * currentRadialDistanceSquared -
                                                                                        currentPositionInZDirectionSquared ) );
-    stateDerivative.segment( 3, 3 ) *= currentStateVector.segment( 0, 3 ).normalized( );
+    stateDerivative.segment( 3, 3 ) *= currentRadialDistanceUnitVector;
 
-    double aerodynamicRecurringTerm = - 0.5 * currentAirDensity / ballisticCoefficient *
+    // Dynamics: aerodynamics terms
+    double aerodynamicRecurringTerm = - 0.5 * currentAirDensity * referenceArea / mass *
             currentStateVector.segment( 3, 3 ).squaredNorm( );
+    Eigen::Matrix3d transformationFromAerodynamicToInertialFrame = getAerodynamicToInertialFrameTransformationMatrix( currentStateVector );
+    stateDerivative.segment( 3, 3 ) += aerodynamicRecurringTerm * transformationFromAerodynamicToInertialFrame *
+            aerodynamicCoefficients.segment( 0, 3 );
 
-    // Add rotational motion
+    ///////////////////////     ROTATIONAL MOTION                   ////////////////////////////////////////////
+
+    // Kinematics
+    Eigen::Vector3d currentRotationalVelocity = currentStateVector.segment( 10, 3 );
+    stateDerivative.segment( 6, 4 ) = tudat::propagators::calculateQuaternionsDerivative( currentStateVector.segment( 6, 4 ),
+                                                                                          currentRotationalVelocity );
+
+    // Torques: gravitational terms
+    Eigen::Vector3d currentTorque = Eigen::Vector3d::Zero( );
+    currentTorque += 3.0 * marsGravitationalParameter / currentRadialDistanceSquared /
+            currentRadialDistance * currentRadialDistanceUnitVector.cross( inertiaMatrix * currentRadialDistanceUnitVector );
+
+    // Torques: aerodynamics terms
+    currentTorque -= aerodynamicRecurringTerm * referenceLength * transformationFromAerodynamicToInertialFrame *
+            aerodynamicCoefficients.segment( 3, 3 );
+
+    // Dynamics
+    stateDerivative.segment( 10, 3 ) = inertiaMatrix.inverse( ) *
+            ( currentTorque + currentControlVector -
+              tudat::linear_algebra::getCrossProductMatrix( currentRotationalVelocity ) * inertiaMatrix * currentRotationalVelocity );
+
+    ///////////////////////     OUTPUT                              ////////////////////////////////////////////
 
     // Give back result
     return stateDerivative;
@@ -159,8 +217,8 @@ int main( )
 
     // Create spacecraft object
     bodyMap[ "Satellite" ] = boost::make_shared< Body >( );
-    const double vehicleMass = 1000.0;
-    bodyMap[ "Satellite" ]->setConstantBodyMass( vehicleMass );
+    const double spacecraftMass = 1000.0;
+    bodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
 
     Eigen::Matrix3d inertiaTensor = Eigen::Matrix3d::Zero( );
     inertiaTensor( 0, 0 ) = 5750.0;
@@ -246,6 +304,11 @@ int main( )
     ///////////////////////             DEFINE INITIAL CONDITIONS              ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    // Get and set Mars physical parameters
+    double marsGravitationalParameter = bodyMap.at( "Mars" )->getGravityFieldModel( )->getGravitationalParameter( );
+    double marsRadius = bodyMap.at( "Mars" )->getShapeModel( )->getAverageRadius( );
+    double marsAtmosphericInterfaceAltitude = 500.0e3;
+
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
     initialStateInKeplerianElements( semiMajorAxisIndex ) = 27228500;
@@ -255,8 +318,6 @@ int main( )
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 23.4 );
     initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );
 
-    double marsGravitationalParameter = bodyMap.at( "Mars" )->getGravityFieldModel( )->getGravitationalParameter( );
-    double marsRadius = bodyMap.at( "Mars" )->getShapeModel( )->getAverageRadius( );
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements(
                 initialStateInKeplerianElements, marsGravitationalParameter );
 
@@ -277,7 +338,7 @@ int main( )
     }
 
     // Define error characteristics of instruments
-    double onboardComputerRefreshRate = 0.1;
+    double onboardComputerRefreshRate = 10.0; // Hertz
     Eigen::Vector3d accelerationBias, accelerometerScaleFactor, accelerometerAccuracy,
             gyroscopeBias, gyroscopeScaleFactor, gyroscopeAccuracy, starTrackerAccuracy;
     Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment;
@@ -305,7 +366,7 @@ int main( )
     }
 
     // Create intertial measurement unit object
-    boost::shared_ptr< InstrumentSystem > onboardInstruments = boost::make_shared< InstrumentSystem >(
+    boost::shared_ptr< NavigationInstrumentsModel > onboardInstruments = boost::make_shared< NavigationInstrumentsModel >(
                 bodyMap, accelerationMap, centralBodyMap, "Satellite" );
     onboardInstruments->addInertialMeasurementUnit( accelerationBias, accelerometerScaleFactor,
                                                     accelerometerMisalignment, accelerometerAccuracy,
@@ -314,19 +375,16 @@ int main( )
     onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////             CREATE GNC MODELS                      ////////////////////////////////////////////
+    ///////////////////////             NAVIGATION PARAMETERS                  ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Create control system object
-    boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( );
-
-    // Create unscented Kalman filter object for navigation
+    // Initial conditions
     Eigen::VectorXd initialEstimatedStateVector;
-    initialEstimatedStateVector << translationalInitialState, rotationalInitialState;
+    initialEstimatedStateVector << translationalInitialState, rotationalInitialState; // assume perfect initial knowledge
     Eigen::MatrixXd initialEstimatedStateCovarianceMatrix = Eigen::MatrixXd::Identity(
                 initialEstimatedStateVector.rows( ), initialEstimatedStateVector.rows( ) );
 
-    Eigen::MatrixXd systemUncertainty;
+    // System and measurment uncertainties
     double positionStandardDeviation = 1.0;
     double translationalVelocityStandardDeviation = 1.0e-3;
     double attitudeStandardDeviation = 1.0e-6;
@@ -336,30 +394,48 @@ int main( )
             Eigen::VectorXd::Constant( 3, std::pow( translationalVelocityStandardDeviation, 2 ) ),
             Eigen::VectorXd::Constant( 4, std::pow( attitudeStandardDeviation, 2 ) ),
             Eigen::VectorXd::Constant( 3, std::pow( rotationalVelocityStandardDeviation, 2 ) );
-    systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+    Eigen::MatrixXd systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
     Eigen::MatrixXd measurementUncertainty;
 
+    // Aerodynamic coefficients
+    Eigen::Vector6d onboardAerodynamicCoefficients = Eigen::Vector6d::Zero( );
+    onboardAerodynamicCoefficients[ 0 ] = 1.87; // drag coefficient at 0 deg and 125 km
+    onboardAerodynamicCoefficients[ 2 ] = 0.013; // lift coefficient at 0 deg and 125 km
+    onboardAerodynamicCoefficients[ 4 ] = 0.3; // moment coefficient at 0 deg and 125 km
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////             CREATE GNC MODELS                      ////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Create control system object
+    boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( );
+
+    // Create unscented Kalman filter object for navigation
+    boost::shared_ptr< NavigationSystem > navigationSystem = boost::shared_ptr< NavigationSystem >( );
+
     boost::shared_ptr< IntegratorSettings< > > kalmanFilterIntegratorSettings =
-            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshRate );
+            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, 1.0 / onboardComputerRefreshRate );
 
     boost::shared_ptr< UnscentedKalmanFilter< > > unscentedKalmanFilter = boost::make_shared< UnscentedKalmanFilter< > >(
-                boost::bind( &stateDerivativeFromOnboardModels, _1, _2, controlSystem->getCurrentControlVector( ),
-                             marsGravitationalParameter, marsRadius ),
+                boost::bind( &stateDerivativeFromOnboardModels, _1, _2, controlSystem->getCurrentAttitudeControlVector( ),
+                             marsGravitationalParameter, marsRadius, 1.957e-3, onboardAerodynamicCoefficients,
+                             spacecraftMass, referenceAreaAerodynamic, referenceLengthAerodynamic,
+                             inertiaTensor, navigationSystem->getCurrentEstimatedDensity( ) ),
                 boost::lambda::constant( &onboardInstruments->getCurrentInertialMeasurementUnitMeasurement ),
-                systemUncertainty, measurementUncertainty,
-                simulationStartEpoch, initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix,
-                kalmanFilterIntegratorSettings );
+                systemUncertainty, measurementUncertainty, simulationStartEpoch, initialEstimatedStateVector,
+                initialEstimatedStateCovarianceMatrix, kalmanFilterIntegratorSettings );
 
     // Create giudance system object
     boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( );
 
     // Create navigation system object
-    boost::shared_ptr< NavigationSystem > navigationSystem = boost::make_shared< NavigationSystem >(
-                unscentedKalmanFilter, &stateTransitionMatrix, marsGravitationalParameter, marsRadius );
+    navigationSystem = boost::make_shared< NavigationSystem >(
+                unscentedKalmanFilter, &stateTransitionMatrix, marsGravitationalParameter, marsRadius,
+                marsAtmosphericInterfaceAltitude );
 
     // Create onboard computer object
-    boost::shared_ptr< OnboardComputer > onboardComputer = boost::make_shared< OnboardComputer >(
+    boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
                 controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
