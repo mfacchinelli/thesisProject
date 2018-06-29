@@ -24,8 +24,8 @@
 #include "Tudat/Astrodynamics/SystemModels/onboardComputerModel.h"
 
 //! Typedefs for current file.
-typedef Eigen::Matrix< double, 13, 1 > Eigen::Vector13d;
-typedef Eigen::Matrix< double, 13, 13 > Eigen::Matrix13d;
+typedef Eigen::Matrix< double, 10, 1 > Eigen::Vector10d;
+typedef Eigen::Matrix< double, 10, 10 > Eigen::Matrix10d;
 
 //! Get path for output directory.
 static inline std::string getOutputPath( const std::string& extraDirectory = "" )
@@ -50,42 +50,52 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
-//! Function to compute the transformation matrix from aerodynamic frame to inertial frame.
-Eigen::Matrix3d getAerodynamicToInertialFrameTransformationMatrix( const Eigen::Vector13d& currentStateVector )
+//! Data structure to input parameters needed for state derivative vector and state transition matrix.
+struct AuxiliaryStateEstimationParameters
 {
-    Eigen::Quaterniond currentQuaternionFromBodyFixedToInertialFrame = Eigen::Quaterniond( currentStateVector.segment( 6, 4 ) );
-    Eigen::Matrix3d transformationFromInertialToBodyFixedFrame =
-            currentQuaternionFromBodyFixedToInertialFrame.inverse( ).toRotationMatrix( );
+    const double marsGravitationalParameter;
+    const double marsRadius;
+    const double secondOrderSphericalHarmonicCoefficient;
+    const double spacecraftMass;
+    const Eigen::Matrix3d spacecraftInertiaMatrix;
+    const double referenceArea;
+//    const double referenceLength;
+    const Eigen::Vector3d aerodynamicCoefficients; //Eigen::Vector6d
+};
 
-    Eigen::Vector3d currentVelocityInBodyFrame = transformationFromInertialToBodyFixedFrame * currentStateVector.segment( 3, 3 );
-    double currentVelocityMagnitude = currentVelocityInBodyFrame.norm( );
-    Eigen::Vector3d currentVelocityInBodyFrameXYPlane;
-    currentVelocityInBodyFrameXYPlane << currentVelocityInBodyFrame.segment( 0, 2 ), Eigen::Vector1d::Zero( );
-    double currentVelocityInBodyFrameXYPlaneMagnitude = currentVelocityInBodyFrameXYPlane.norm( );
-    Eigen::Vector3d currentVelocityInBodyFrameXAxis;
-    currentVelocityInBodyFrameXAxis << currentVelocityInBodyFrame.segment( 0, 1 ), Eigen::Vector2d::Zero( );
+////! Function to compute the transformation matrix from aerodynamic frame to inertial frame.
+//Eigen::Matrix3d getAerodynamicToInertialFrameTransformationMatrix( const Eigen::Vector10d& currentStateVector )
+//{
+//    Eigen::Quaterniond currentQuaternionFromBodyFixedToInertialFrame = Eigen::Quaterniond( currentStateVector.segment( 6, 4 ) );
+//    Eigen::Matrix3d transformationFromInertialToBodyFixedFrame =
+//            currentQuaternionFromBodyFixedToInertialFrame.inverse( ).toRotationMatrix( );
 
-    double angleOfSideSlip = std::acos( currentVelocityInBodyFrame.dot( currentVelocityInBodyFrameXYPlane ) / currentVelocityMagnitude /
-                                        currentVelocityInBodyFrameXYPlaneMagnitude );
-    double angleOfAttack = std::acos( currentVelocityInBodyFrameXYPlane.dot( currentVelocityInBodyFrameXAxis ) /
-                                      currentVelocityInBodyFrameXYPlaneMagnitude / currentVelocityInBodyFrame[ 0 ] );
+//    Eigen::Vector3d currentVelocityInBodyFrame = transformationFromInertialToBodyFixedFrame * currentStateVector.segment( 3, 3 );
+//    double currentVelocityMagnitude = currentVelocityInBodyFrame.norm( );
+//    Eigen::Vector3d currentVelocityInBodyFrameXYPlane;
+//    currentVelocityInBodyFrameXYPlane << currentVelocityInBodyFrame.segment( 0, 2 ), Eigen::Vector1d::Zero( );
+//    double currentVelocityInBodyFrameXYPlaneMagnitude = currentVelocityInBodyFrameXYPlane.norm( );
+//    Eigen::Vector3d currentVelocityInBodyFrameXAxis;
+//    currentVelocityInBodyFrameXAxis << currentVelocityInBodyFrame.segment( 0, 1 ), Eigen::Vector2d::Zero( );
 
-    Eigen::Matrix3d transformationFromBodyToAerodynamicFrame =
-            tudat::reference_frames::getBodyToAirspeedBasedAerodynamicFrameTransformationMatrix( angleOfAttack, angleOfSideSlip );
-    return transformationFromInertialToBodyFixedFrame.inverse( ) * transformationFromBodyToAerodynamicFrame.inverse( );
-}
+//    double angleOfSideSlip = std::acos( currentVelocityInBodyFrame.dot( currentVelocityInBodyFrameXYPlane ) / currentVelocityMagnitude /
+//                                        currentVelocityInBodyFrameXYPlaneMagnitude );
+//    double angleOfAttack = std::acos( currentVelocityInBodyFrameXYPlane.dot( currentVelocityInBodyFrameXAxis ) /
+//                                      currentVelocityInBodyFrameXYPlaneMagnitude / currentVelocityInBodyFrame[ 0 ] );
+
+//    Eigen::Matrix3d transformationFromBodyToAerodynamicFrame =
+//            tudat::reference_frames::getBodyToAirspeedBasedAerodynamicFrameTransformationMatrix( angleOfAttack, angleOfSideSlip );
+//    return transformationFromInertialToBodyFixedFrame.inverse( ) * transformationFromBodyToAerodynamicFrame.inverse( );
+//}
 
 //! Function to compute the state derivative for both the translational and rotational motion of the spacecraft.
-Eigen::Vector13d stateDerivativeFromOnboardModels( const double currentTime, const Eigen::Vector13d& currentStateVector,
-                                                   const Eigen::Vector3d& currentControlVector,
-                                                   const double marsGravitationalParameter, const double marsRadius,
-                                                   const double secondOrderSphericalHarmonicCoefficient,
-                                                   const Eigen::Vector6d& aerodynamicCoefficients, const double mass,
-                                                   const double referenceArea, const double referenceLength,
-                                                   const Eigen::Matrix3d inertiaMatrix, const double currentAirDensity )
+Eigen::Vector10d stateDerivativeOnboardModel( const double currentTime, const Eigen::Vector10d& currentStateVector,
+                                              const Eigen::Vector3d& currentControlVector,
+                                              const Eigen::Vector3d& currentRotationalVelocity,
+                                              const double currentDensity, const AuxiliaryStateEstimationParameters& dataStructure )
 {
     // Declare state derivative vector
-    Eigen::Vector13d stateDerivative;
+    Eigen::Vector10d stateDerivative;
 
     ///////////////////////     TRANSLATIONAL MOTION                ////////////////////////////////////////////
 
@@ -96,9 +106,9 @@ Eigen::Vector13d stateDerivativeFromOnboardModels( const double currentTime, con
     double currentPositionInZDirectionSquared = 5.0 * currentStateVector[ 2 ] * currentStateVector[ 2 ];
     double currentRadialDistance = currentStateVector.segment( 0, 3 ).norm( );
     double currentRadialDistanceSquared = currentRadialDistance * currentRadialDistance;
-    double centralGravitationalTerm = - marsGravitationalParameter / currentRadialDistanceSquared;
-    double gravityRecurringTerm = 3.0 / 2.0 * secondOrderSphericalHarmonicCoefficient * std::pow( marsRadius /
-                                                                                                  currentRadialDistanceSquared, 2 );
+    double centralGravitationalTerm = - dataStructure.marsGravitationalParameter / currentRadialDistanceSquared;
+    double gravityRecurringTerm = 3.0 / 2.0 * dataStructure.secondOrderSphericalHarmonicCoefficient *
+            std::pow( dataStructure.marsRadius / currentRadialDistanceSquared, 2 );
     Eigen::Vector3d currentRadialDistanceUnitVector = currentStateVector.segment( 0, 3 ).normalized( );
     stateDerivative[ 3 ] = centralGravitationalTerm * ( 1.0 + gravityRecurringTerm * ( currentRadialDistanceSquared -
                                                                                        currentPositionInZDirectionSquared ) );
@@ -108,37 +118,57 @@ Eigen::Vector13d stateDerivativeFromOnboardModels( const double currentTime, con
     stateDerivative.segment( 3, 3 ) *= currentRadialDistanceUnitVector;
 
     // Dynamics: aerodynamics terms
-    double aerodynamicRecurringTerm = - 0.5 * currentAirDensity * referenceArea / mass *
-            currentStateVector.segment( 3, 3 ).squaredNorm( );
-    Eigen::Matrix3d transformationFromAerodynamicToInertialFrame = getAerodynamicToInertialFrameTransformationMatrix( currentStateVector );
-    stateDerivative.segment( 3, 3 ) += aerodynamicRecurringTerm * transformationFromAerodynamicToInertialFrame *
-            aerodynamicCoefficients.segment( 0, 3 );
+    Eigen::Vector3d aerodynamicRecurringTerm = - 0.5 * currentDensity * dataStructure.referenceArea / dataStructure.spacecraftMass *
+            currentStateVector.segment( 3, 3 ).cwiseProduct( currentStateVector.segment( 3, 3 ).cwiseAbs( ) );
+    stateDerivative.segment( 3, 3 ) += aerodynamicRecurringTerm.cwiseProduct( dataStructure.aerodynamicCoefficients );
 
     ///////////////////////     ROTATIONAL MOTION                   ////////////////////////////////////////////
 
     // Kinematics
-    Eigen::Vector3d currentRotationalVelocity = currentStateVector.segment( 10, 3 );
+//    Eigen::Vector3d currentRotationalVelocity = currentStateVector.segment( 10, 3 );
+    currentRotationalVelocity += dataStructure.spacecraftInertiaMatrix.inverse( ) * currentControlVector;
     stateDerivative.segment( 6, 4 ) = tudat::propagators::calculateQuaternionsDerivative( currentStateVector.segment( 6, 4 ),
                                                                                           currentRotationalVelocity );
 
-    // Torques: gravitational terms
-    Eigen::Vector3d currentTorque = Eigen::Vector3d::Zero( );
-    currentTorque += 3.0 * marsGravitationalParameter / currentRadialDistanceSquared /
-            currentRadialDistance * currentRadialDistanceUnitVector.cross( inertiaMatrix * currentRadialDistanceUnitVector );
+//    // Torques: gravitational terms
+//    Eigen::Vector3d currentTorque = Eigen::Vector3d::Zero( );
+//    currentTorque += 3.0 * dataStructure.marsGravitationalParameter / currentRadialDistanceSquared /
+//            currentRadialDistance * currentRadialDistanceUnitVector.cross( dataStructure.spacecraftInertiaMatrix *
+//                                                                           currentRadialDistanceUnitVector );
 
-    // Torques: aerodynamics terms
-    currentTorque -= aerodynamicRecurringTerm * referenceLength * transformationFromAerodynamicToInertialFrame *
-            aerodynamicCoefficients.segment( 3, 3 );
+//    // Torques: aerodynamics terms
+//    currentTorque -= dataStructure.referenceArea * aerodynamicRecurringTerm.cwiseProduct( dataStructure.aerodynamicCoefficients.segment( 3, 3 ) );
+//    // note the negative sign to cancel out the negative sign in aerodynamicRecurringTerm
 
-    // Dynamics
-    stateDerivative.segment( 10, 3 ) = inertiaMatrix.inverse( ) *
-            ( currentTorque + currentControlVector -
-              tudat::linear_algebra::getCrossProductMatrix( currentRotationalVelocity ) * inertiaMatrix * currentRotationalVelocity );
+//    // Dynamics
+//    stateDerivative.segment( 10, 3 ) = dataStructure.spacecraftInertiaMatrix.inverse( ) *
+//            ( currentTorque + currentControlVector -
+//              tudat::linear_algebra::getCrossProductMatrix( currentRotationalVelocity ) * dataStructure.spacecraftInertiaMatrix *
+//              currentRotationalVelocity );
 
     ///////////////////////     OUTPUT                              ////////////////////////////////////////////
 
     // Give back result
     return stateDerivative;
+}
+
+//! Function to return the expected measurement of translational accelerations and attitude.
+Eigen::Vector7d measurementOnboardModel( const double currentTime, const Eigen::Vector10d& currentStateVector,
+                                         const double currentDensity, const AuxiliaryStateEstimationParameters& dataStructure )
+{
+    // Declare measurement vector
+    Eigen::Vector7d measurementVector;
+
+    // Aerodynamic acceleration
+    measurementVector.segment( 0, 3 ) = - 0.5 * currentDensity * dataStructure.referenceArea /
+            dataStructure.spacecraftMass * ( currentStateVector.segment( 3, 3 ).cwiseProduct(
+                currentStateVector.segment( 3, 3 ).cwiseAbs( ) ) ).cwiseProduct( dataStructure.aerodynamicCoefficients );
+
+    // Attitude
+    measurmentVector.segment( 3, 4 ) = currentStateVector.segment( 6, 4 );
+
+    // Give back result
+    return measurementVector;
 }
 
 //! Main code.
@@ -162,6 +192,7 @@ int main( )
     using namespace tudat::orbital_element_conversions;
     using namespace tudat::propagators;
     using namespace tudat::simulation_setup;
+    using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -220,11 +251,11 @@ int main( )
     const double spacecraftMass = 1000.0;
     bodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
 
-    Eigen::Matrix3d inertiaTensor = Eigen::Matrix3d::Zero( );
-    inertiaTensor( 0, 0 ) = 5750.0;
-    inertiaTensor( 1, 1 ) = 1200.0;
-    inertiaTensor( 2, 2 ) = 5200.0;
-    bodyMap[ "Satellite" ]->setBodyInertiaTensor( inertiaTensor );
+    Eigen::Matrix3d spacecraftInertiaTensor = Eigen::Matrix3d::Zero( );
+    spacecraftInertiaTensor( 0, 0 ) = 5750.0;
+    spacecraftInertiaTensor( 1, 1 ) = 1200.0;
+    spacecraftInertiaTensor( 2, 2 ) = 5200.0;
+    bodyMap[ "Satellite" ]->setBodyInertiaTensor( spacecraftInertiaTensor );
 
     // Aerodynamic coefficients from file
     std::map< int, std::string > aerodynamicForceCoefficientFiles;
@@ -399,10 +430,16 @@ int main( )
     Eigen::MatrixXd measurementUncertainty;
 
     // Aerodynamic coefficients
-    Eigen::Vector6d onboardAerodynamicCoefficients = Eigen::Vector6d::Zero( );
+    Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
     onboardAerodynamicCoefficients[ 0 ] = 1.87; // drag coefficient at 0 deg and 125 km
     onboardAerodynamicCoefficients[ 2 ] = 0.013; // lift coefficient at 0 deg and 125 km
-    onboardAerodynamicCoefficients[ 4 ] = 0.3; // moment coefficient at 0 deg and 125 km
+//    onboardAerodynamicCoefficients[ 4 ] = 0.3; // moment coefficient at 0 deg and 125 km
+
+    // Store all needed data for navigation update functions
+    AuxiliaryStateEstimationParameters navigationDataStructure = { marsGravitationalParameter, marsRadius, 1.957e-3,
+                                                                   spacecraftMass, spacecraftInertiaTensor,
+                                                                   referenceAreaAerodynamic, //referenceLengthAerodynamic,
+                                                                   onboardAerodynamicCoefficients };
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE GNC MODELS                      ////////////////////////////////////////////
@@ -415,14 +452,13 @@ int main( )
     boost::shared_ptr< NavigationSystem > navigationSystem = boost::shared_ptr< NavigationSystem >( );
 
     boost::shared_ptr< IntegratorSettings< > > kalmanFilterIntegratorSettings =
-            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, 1.0 / onboardComputerRefreshRate );
+            boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, 1.0 / onboardComputerRefreshRate );
 
     boost::shared_ptr< UnscentedKalmanFilter< > > unscentedKalmanFilter = boost::make_shared< UnscentedKalmanFilter< > >(
-                boost::bind( &stateDerivativeFromOnboardModels, _1, _2, controlSystem->getCurrentAttitudeControlVector( ),
-                             marsGravitationalParameter, marsRadius, 1.957e-3, onboardAerodynamicCoefficients,
-                             spacecraftMass, referenceAreaAerodynamic, referenceLengthAerodynamic,
-                             inertiaTensor, navigationSystem->getCurrentEstimatedDensity( ) ),
-                boost::lambda::constant( &onboardInstruments->getCurrentInertialMeasurementUnitMeasurement ),
+                boost::bind( &stateDerivativeOnboardModel, _1, _2, controlSystem->getCurrentAttitudeControlVector( ),
+                             onboardInstruments->getCurrentGyroscopeMeasurement( ),
+                             navigationSystem->getCurrentEstimatedDensity( ), navigationDataStructure ),
+                boost::bind( &measurementOnboardModel, _1, _2, navigationSystem->getCurrentEstimatedDensity( ) ),
                 systemUncertainty, measurementUncertainty, simulationStartEpoch, initialEstimatedStateVector,
                 initialEstimatedStateCovarianceMatrix, kalmanFilterIntegratorSettings );
 
