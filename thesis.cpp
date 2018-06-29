@@ -23,9 +23,6 @@
 #include "Tudat/Astrodynamics/SystemModels/navigationInstrumentsModel.h"
 #include "Tudat/Astrodynamics/SystemModels/onboardComputerModel.h"
 
-//! Typedefs for current file.
-typedef Eigen::Matrix< double, 16, 1 > Eigen::Vector16d;
-
 //! Get path for output directory.
 static inline std::string getOutputPath( const std::string& extraDirectory = "" )
 {
@@ -48,94 +45,6 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
 
     return outputPath;
 }
-
-////! Data structure to input parameters needed for state derivative vector and state transition matrix.
-//struct AuxiliaryStateEstimationParameters
-//{
-//    const double marsGravitationalParameter;
-//    const double marsRadius;
-//    const double secondOrderSphericalHarmonicCoefficient;
-//    const double spacecraftMass;
-//    const Eigen::Matrix3d spacecraftInertiaMatrix;
-//    const double referenceArea;
-//    const Eigen::Vector3d aerodynamicCoefficients;
-//};
-
-////! Function to compute the state derivative for both the translational and rotational motion of the spacecraft.
-//Eigen::Vector16d stateDerivativeOnboardModel( const double currentTime, const Eigen::Vector16d& currentStateVector,
-//                                              const Eigen::Vector3d& currentControlVector,
-//                                              const Eigen::Vector3d& currentRotationalVelocity,
-//                                              const double currentDensity, const AuxiliaryStateEstimationParameters& dataStructure )
-//{
-//    // Declare state derivative vector
-//    Eigen::Vector16d stateDerivative;
-
-//    ///////////////////////     TRANSLATIONAL MOTION                ////////////////////////////////////////////
-
-//    // Kinematics
-//    stateDerivative.segment( 0, 3 ) = currentStateVector.segment( 3, 3 );
-
-//    // Dynamics: gravitational terms
-//    double currentPositionInZDirectionSquared = 5.0 * currentStateVector[ 2 ] * currentStateVector[ 2 ];
-//    double currentRadialDistance = currentStateVector.segment( 0, 3 ).norm( );
-//    double currentRadialDistanceSquared = currentRadialDistance * currentRadialDistance;
-//    double centralGravitationalTerm = - dataStructure.marsGravitationalParameter / currentRadialDistanceSquared;
-//    double gravityRecurringTerm = 3.0 / 2.0 * dataStructure.secondOrderSphericalHarmonicCoefficient *
-//            std::pow( dataStructure.marsRadius / currentRadialDistanceSquared, 2 );
-//    Eigen::Vector3d currentRadialDistanceUnitVector = currentStateVector.segment( 0, 3 ).normalized( );
-//    stateDerivative[ 3 ] = centralGravitationalTerm * ( 1.0 + gravityRecurringTerm * ( currentRadialDistanceSquared -
-//                                                                                       currentPositionInZDirectionSquared ) );
-//    stateDerivative[ 4 ] = stateDerivative[ 3 ];
-//    stateDerivative[ 5 ] = centralGravitationalTerm * ( 1.0 + gravityRecurringTerm * ( 3.0 * currentRadialDistanceSquared -
-//                                                                                       currentPositionInZDirectionSquared ) );
-//    stateDerivative.segment( 3, 3 ) *= currentRadialDistanceUnitVector;
-
-//    // Dynamics: aerodynamics terms
-//    Eigen::Vector3d aerodynamicRecurringTerm = - 0.5 * currentDensity * dataStructure.referenceArea / dataStructure.spacecraftMass *
-//            currentStateVector.segment( 3, 3 ).cwiseProduct( currentStateVector.segment( 3, 3 ).cwiseAbs( ) );
-//    stateDerivative.segment( 3, 3 ) += aerodynamicRecurringTerm.cwiseProduct( dataStructure.aerodynamicCoefficients );
-
-//    ///////////////////////     ROTATIONAL MOTION                   ////////////////////////////////////////////
-
-//    // Remove errors from gyroscope measurement
-//    currentRotationalVelocity = ( Eigen::Matrix3d::Identity( ) - currentStateVector.segment( 13, 3 ).asDiagonal( ) ) *
-//            ( currentRotationalVelocity - currentStateVector.segment( 10, 3 ) );
-
-//    // Kinematics
-//    currentRotationalVelocity += dataStructure.spacecraftInertiaMatrix.inverse( ) * currentControlVector;
-//    stateDerivative.segment( 6, 4 ) = tudat::propagators::calculateQuaternionsDerivative( currentStateVector.segment( 6, 4 ),
-//                                                                                          currentRotationalVelocity );
-
-//    ///////////////////////     OUTPUT                              ////////////////////////////////////////////
-
-//    // Give back result
-//    return stateDerivative;
-//}
-
-////! Function to return the expected measurement of translational accelerations and attitude.
-//Eigen::Vector7d measurementOnboardModel( const double currentTime, const Eigen::Vector16d& currentStateVector,
-//                                         const double currentDensity, const AuxiliaryStateEstimationParameters& dataStructure )
-//{
-//    // Declare measurement vector
-//    Eigen::Vector7d measurementVector;
-
-//    // Aerodynamic acceleration
-//    measurementVector.segment( 0, 3 ) = - 0.5 * currentDensity * dataStructure.referenceArea /
-//            dataStructure.spacecraftMass * ( currentStateVector.segment( 3, 3 ).cwiseProduct(
-//                currentStateVector.segment( 3, 3 ).cwiseAbs( ) ) ).cwiseProduct( dataStructure.aerodynamicCoefficients );
-
-//    // Attitude
-//    measurmentVector.segment( 3, 4 ) = currentStateVector.segment( 6, 4 );
-
-//    // Give back result
-//    return measurementVector;
-//}
-
-////! Function to return the state transition matrix for translational motion.
-//Eigen::Matrix6d stateTransitionMatrixTranslationalMotionOnbaordModel( const Eigen::Vector6d& currentStateVector )
-//{
-
-//}
 
 //! Main code.
 int main( )
@@ -413,11 +322,6 @@ int main( )
     onboardAerodynamicCoefficients[ 0 ] = 1.87; // drag coefficient at 0 deg and 125 km
     onboardAerodynamicCoefficients[ 2 ] = 0.013; // lift coefficient at 0 deg and 125 km
 
-//    // Store all needed data for navigation update functions
-//    AuxiliaryStateEstimationParameters navigationDataStructure = { marsGravitationalParameter, marsRadius, 1.957e-3,
-//                                                                   spacecraftMass, spacecraftInertiaTensor,
-//                                                                   referenceAreaAerodynamic, onboardAerodynamicCoefficients };
-
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -462,11 +366,11 @@ int main( )
     boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( );
 
     // Create unscented Kalman filter settings object for navigation
-    boost::shared_ptr< IntegratorSettings< > > filteringIntegrationSettings =
+    boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
             boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, 1.0 / onboardComputerRefreshRate );
-    boost::shared_ptr< FilterSettings< > > filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings >(
+    boost::shared_ptr< FilterSettings< > > filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
                 systemUncertainty, measurementUncertainty, simulationStartEpoch, initialEstimatedStateVector,
-                initialEstimatedStateCovarianceMatrix, filteringIntegrationSettings );
+                initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
 
     // Create giudance system object
     boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( );
@@ -486,7 +390,8 @@ int main( )
 
     // Define termination conditions
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
-            boost::make_shared< CustomTerminationSettings >( boost::bind( &onboardComputer->checkStoppingCondition, _1 ) );
+            boost::make_shared< CustomTerminationSettings >(
+                boost::bind( &OnboardComputerModel::checkStoppingCondition, onboardComputer ) );
 
     // Create integrator settings
     boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< RungeKuttaVariableStepSizeSettings< > >(
