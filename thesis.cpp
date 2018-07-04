@@ -127,91 +127,11 @@ int main( )
                 boundaryConditions, extrapolationValues );
     NamedBodyMap bodyMap = createBodies( bodySettings );
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // Create spacecraft object
-    bodyMap[ "Satellite" ] = boost::make_shared< Body >( );
-    const double spacecraftMass = 1000.0;
-    bodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
-
-    Eigen::Matrix3d spacecraftInertiaTensor = Eigen::Matrix3d::Zero( );
-    spacecraftInertiaTensor( 0, 0 ) = 5750.0;
-    spacecraftInertiaTensor( 1, 1 ) = 1215.0;
-    spacecraftInertiaTensor( 2, 2 ) = 5210.0;
-    bodyMap[ "Satellite" ]->setBodyInertiaTensor( spacecraftInertiaTensor );
-
-    // Aerodynamic coefficients from file
-    std::map< int, std::string > aerodynamicForceCoefficientFiles;
-    std::map< int, std::string > aerodynamicMomentCoefficientFiles;
-    aerodynamicForceCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MRODragCoefficients.txt";
-    aerodynamicForceCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROLiftCoefficients.txt";
-    aerodynamicMomentCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROMomentCoefficients.txt";
-
-    // Create aerodynamic coefficient settings
-    const double referenceAreaAerodynamic = 37.5;
-    const double referenceLengthAerodynamic = 2.5;
-    const Eigen::Vector3d momentReferencePoint = Eigen::Vector3d::Zero( );
-    boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
-            readTabulatedAerodynamicCoefficientsFromFiles(
-                aerodynamicForceCoefficientFiles, aerodynamicMomentCoefficientFiles, referenceLengthAerodynamic,
-                referenceAreaAerodynamic, referenceLengthAerodynamic, momentReferencePoint,
-                boost::assign::list_of( aerodynamics::angle_of_attack_dependent )( aerodynamics::altitude_dependent ),
-                true, true );
-
-    // Constant radiation pressure variables
-    const double referenceAreaRadiation = 37.5;
-    const double radiationPressureCoefficient = 1.0;
-    std::vector< std::string > occultingBodies;
-    occultingBodies.push_back( "Mars" );
-    boost::shared_ptr< RadiationPressureInterfaceSettings > radiationPressureSettings =
-            boost::make_shared< CannonBallRadiationPressureInterfaceSettings >(
-                "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
-
-    // Set aerodynamic coefficient and radiation pressure settings
-    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface( createAerodynamicCoefficientInterface(
-                                                                    aerodynamicCoefficientSettings, "Satellite" ) );
-    bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
-                                                               radiationPressureSettings, "Satellite", bodyMap ) );
-
-    // Finalize body creation.
-    setGlobalFrameBodyEphemerides( bodyMap, "SSB", "J2000" );
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////            CREATE ACCELERATIONS          //////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     // Define simulation objects
     std::vector< std::string > bodiesToPropagate;
-    std::vector< std::string > centralBodies;
     bodiesToPropagate.push_back( "Satellite" );
+    std::vector< std::string > centralBodies;
     centralBodies.push_back( "Mars" );
-
-    // Define acceleration settings
-    SelectedAccelerationMap accelerationMap;
-    std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
-    for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
-    {
-        if ( bodiesToCreate.at( i ) != "Mars" )
-        {
-            accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
-        }
-    }
-    accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
-    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
-
-    // Set accelerations settings
-    accelerationMap[ "Satellite" ] = accelerationsOfSatellite;
-    AccelerationMap accelerationModelMap = createAccelerationModelsMap(
-                bodyMap, accelerationMap, bodiesToPropagate, centralBodies );
-
-    // Define and set torque settings
-    SelectedTorqueMap torqueMap;
-    torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( aerodynamic_torque ) );
-    torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( second_order_gravitational_torque ) );
-    TorqueModelMap torqueModelMap = createTorqueModelsMap( bodyMap, torqueMap );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             DEFINE INITIAL CONDITIONS              ////////////////////////////////////////////
@@ -219,8 +139,7 @@ int main( )
 
     // Get and set Mars physical parameters
     double marsGravitationalParameter = bodyMap.at( "Mars" )->getGravityFieldModel( )->getGravitationalParameter( );
-    double marsRadius = bodyMap.at( "Mars" )->getShapeModel( )->getAverageRadius( );
-    double marsAtmosphericInterfaceAltitude = 500.0e3;
+    double marsAtmosphericInterfaceAltitude = 300.0e3;
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
@@ -231,71 +150,37 @@ int main( )
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
     initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );
 
+    // Define initial translational state
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements(
                 initialStateInKeplerianElements, marsGravitationalParameter );
 
+    // Find quaternion of initial rotation
+    Eigen::Matrix3d directionCosineMatrix = Eigen::Matrix3d::Zero( );
+
+    // Find the trajectory x-axis unit vector
+    Eigen::Vector3d xUnitVector = translationalInitialState.segment( 3, 3 ).normalized( );
+    directionCosineMatrix.col( 0 ) = xUnitVector; // body-fixed (= trajectory)
+
+    // Find trajectory z-axis unit vector
+    Eigen::Vector3d zUnitVector = translationalInitialState.segment( 0, 3 ).normalized( );
+    zUnitVector -= zUnitVector.dot( xUnitVector ) * xUnitVector;
+    directionCosineMatrix.col( 2 ) = - zUnitVector; // body-fixed (= -trajectory)
+
+    // Find body-fixed y-axis unit vector
+    directionCosineMatrix.col( 1 ) = xUnitVector.cross( zUnitVector ); // body-fixed (= -trajectory)
+
     // Define initial rotational state
-    Eigen::Quaterniond initialStateInQuaternionElements = Eigen::Quaterniond( Eigen::Matrix3d::Identity( ) );
     Eigen::Vector7d rotationalInitialState = Eigen::Vector7d::Zero( );
-    rotationalInitialState.segment( 0, 4 ) = linear_algebra::convertQuaternionToVectorFormat( initialStateInQuaternionElements );
+    rotationalInitialState.segment( 0, 4 ) = linear_algebra::convertQuaternionToVectorFormat(
+                Eigen::Quaterniond( directionCosineMatrix.transpose( ) ) );
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////             CREATE INSTRUMENT MODELS               ////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // Define map of central bodies for onboard instrument system
-    std::map< std::string, std::string > centralBodyMap;
-    for ( unsigned int i = 0; i < bodiesToPropagate.size( ); i++ )
-    {
-        centralBodyMap[ bodiesToPropagate.at( i ) ] = centralBodies.at( i );
-    }
-
-    // Define error characteristics of instruments
+    // Simulation times
     double simulationConstantStepSize = 1.0;
     double onboardComputerRefreshStepSize = simulationConstantStepSize; // seconds
     double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
-    Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor;
-    Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment;
-
-    double gyroscopeBiasStandardDeviation = 5.0e-9;
-    double gyroscopeScaleFactorStandardDeviation = 1e-4;
-
-    std::default_random_engine generator;
-    std::normal_distribution< double > distributionOne( 0.0, gyroscopeBiasStandardDeviation );
-    std::normal_distribution< double > distributionTwo( 0.0, gyroscopeScaleFactorStandardDeviation );
-    std::normal_distribution< double > distributionThree( 0.0, 1.0e-3 );
-    for ( unsigned int i = 0; i < 6; i++ )
-    {
-        if ( i < 3 )
-        {
-            accelerationBias[ i ] = distributionTwo( generator );
-            accelerometerScaleFactor[ i ] = distributionTwo( generator );
-            gyroscopeBias[ i ] = distributionOne( generator );
-            gyroscopeScaleFactor[ i ] = distributionTwo( generator );
-        }
-        accelerometerMisalignment[ i ] = distributionThree( generator );
-        gyroscopeMisalignment[ i ] = distributionThree( generator );
-    }
-
-    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 / std::sqrt( onboardComputerRefreshRate ) );
-    Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 / std::sqrt( onboardComputerRefreshRate ) );
-    Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
-
-    // Create navigation instruments object
-    boost::shared_ptr< NavigationInstrumentsModel > onboardInstruments =
-            boost::make_shared< NavigationInstrumentsModel >( bodyMap, accelerationModelMap, "Satellite" );
-
-    // Add inertial measurement unit
-    onboardInstruments->addInertialMeasurementUnit( accelerationBias, accelerometerScaleFactor,
-                                                    accelerometerMisalignment, accelerometerAccuracy,
-                                                    gyroscopeBias, gyroscopeScaleFactor,
-                                                    gyroscopeMisalignment, gyroscopeAccuracy );
-
-    // Ad star tracker
-    onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////             ONBOARD PARAMETERS                     ////////////////////////////////////////////
+    ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
@@ -303,6 +188,13 @@ int main( )
     initialEstimatedStateVector << translationalInitialState, rotationalInitialState.segment( 0, 4 ), // assume perfect initial knowledge
             Eigen::Vector6d::Zero( ); // assume zero errors in gyroscope
     Eigen::Matrix16d initialEstimatedStateCovarianceMatrix = Eigen::Matrix16d::Identity( 16, 16 );
+
+    // Deifine instrument accuracy
+    double gyroscopeBiasStandardDeviation = 5.0e-9;
+    double gyroscopeScaleFactorStandardDeviation = 1e-4;
+    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 3.0e-7 );//2.0e-4 / std::sqrt( onboardComputerRefreshRate ) );
+    Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 / std::sqrt( onboardComputerRefreshRate ) );
+    Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
 
     // System and measurment uncertainties
     double positionStandardDeviation = 10.0;
@@ -318,7 +210,7 @@ int main( )
 
     Eigen::Vector7d diagonalOfMeasurementUncertainty;
     diagonalOfMeasurementUncertainty << gyroscopeAccuracy, Eigen::Vector4d::Constant( 1e-6 ); // starTrackerAccuracy <<<<----
-    Eigen::Matrix< double, 7, 7 > measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
+    Eigen::Matrix7d measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -326,13 +218,25 @@ int main( )
     onboardAerodynamicCoefficients[ 2 ] = 0.013; // lift coefficient at 0 deg and 125 km
 
     // Controller gains
-    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 0.0 );
-    Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );
-    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );
+    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 1.0e-8 );
+    Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 1.0e-12 );
+    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 1.0e-7 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Define spacecraft physical characteristics
+    const double spacecraftMass = 1000.0;
+    Eigen::Matrix3d spacecraftInertiaTensor = Eigen::Matrix3d::Zero( );
+    spacecraftInertiaTensor( 0, 0 ) = 5750.0;
+    spacecraftInertiaTensor( 1, 1 ) = 1215.0;
+    spacecraftInertiaTensor( 2, 2 ) = 5210.0;
+    const double referenceAreaAerodynamic = 37.5;
+    const double referenceLengthAerodynamic = 2.5;
+    const Eigen::Vector3d momentReferencePoint = Eigen::Vector3d::Zero( );
+    const double referenceAreaRadiation = 37.5;
+    const double radiationPressureCoefficient = 1.0;
 
     // Create body map for onboard model
     std::map< std::string, boost::shared_ptr< BodySettings > > onboardBodySettings =
@@ -346,6 +250,7 @@ int main( )
             boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
     onboardBodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< ExponentialAtmosphereSettings >( aerodynamics::mars );
     NamedBodyMap onboardBodyMap = createBodies( onboardBodySettings );
+
     onboardBodyMap[ "Satellite" ] = boost::make_shared< Body >( );
     onboardBodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
     onboardBodyMap[ "Satellite" ]->setBodyInertiaTensor( spacecraftInertiaTensor );
@@ -353,15 +258,16 @@ int main( )
                 createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
                                                            referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
                                                        "Satellite" ) );
+
     setGlobalFrameBodyEphemerides( onboardBodyMap, "SSB", "J2000" );
 
     // Define acceleration settings for onboard model
-    SelectedAccelerationMap onboardAccelerationMap;
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > onboardAccelerationsOfSatellite;
     onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 4, 4 ) );
     onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
     // Set accelerations settings
+    SelectedAccelerationMap onboardAccelerationMap;
     onboardAccelerationMap[ "Satellite" ] = onboardAccelerationsOfSatellite;
     AccelerationMap onboardAccelerationModelMap = createAccelerationModelsMap(
                 onboardBodyMap, onboardAccelerationMap, bodiesToPropagate, centralBodies );
@@ -389,13 +295,121 @@ int main( )
                 onboardBodyMap, onboardAccelerationModelMap, "Satellite", "Mars",
                 filteringSettings, three_term_atmosphere_model, marsAtmosphericInterfaceAltitude );
 
-    // Create onboard computer object
-    boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
-                controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Create spacecraft object
+    bodyMap[ "Satellite" ] = boost::make_shared< Body >( );
+    bodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
+    bodyMap[ "Satellite" ]->setBodyInertiaTensor( spacecraftInertiaTensor );
+
+    // Aerodynamic coefficients from file
+    std::map< int, std::string > aerodynamicForceCoefficientFiles;
+    std::map< int, std::string > aerodynamicMomentCoefficientFiles;
+    aerodynamicForceCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MRODragCoefficients.txt";
+    aerodynamicForceCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROLiftCoefficients.txt";
+    aerodynamicMomentCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROMomentCoefficients.txt";
+
+    // Create aerodynamic coefficient settings
+    boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
+            readTabulatedAerodynamicCoefficientsFromFiles(
+                aerodynamicForceCoefficientFiles, aerodynamicMomentCoefficientFiles, referenceLengthAerodynamic,
+                referenceAreaAerodynamic, referenceLengthAerodynamic, momentReferencePoint,
+                boost::assign::list_of( aerodynamics::angle_of_attack_dependent )( aerodynamics::altitude_dependent ),
+                true, true );
+
+    // Constant radiation pressure variables
+    std::vector< std::string > occultingBodies;
+    occultingBodies.push_back( "Mars" );
+    boost::shared_ptr< RadiationPressureInterfaceSettings > radiationPressureSettings =
+            boost::make_shared< CannonBallRadiationPressureInterfaceSettings >(
+                "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
+
+    // Set aerodynamic coefficient and radiation pressure settings
+    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface( createAerodynamicCoefficientInterface(
+                                                                    aerodynamicCoefficientSettings, "Satellite" ) );
+    bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
+                                                               radiationPressureSettings, "Satellite", bodyMap ) );
+    bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
+
+    // Finalize body creation.
+    setGlobalFrameBodyEphemerides( bodyMap, "SSB", "J2000" );
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////            CREATE ACCELERATIONS          //////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Define acceleration settings
+    std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
+    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
+    for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
+    {
+        if ( bodiesToCreate.at( i ) != "Mars" )
+        {
+            accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
+        }
+    }
+    accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
+    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
+
+    // Set accelerations settings
+    SelectedAccelerationMap accelerationMap;
+    accelerationMap[ "Satellite" ] = accelerationsOfSatellite;
+    AccelerationMap accelerationModelMap = createAccelerationModelsMap( bodyMap, accelerationMap, bodiesToPropagate, centralBodies );
+
+    // Define and set torque settings
+    SelectedTorqueMap torqueMap;
+    torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( aerodynamic_torque ) );
+    torqueMap[ "Satellite" ][ "Mars" ].push_back( boost::make_shared< TorqueSettings >( second_order_gravitational_torque ) );
+    torqueMap[ "Satellite" ][ "Satellite" ].push_back( boost::make_shared< TorqueSettings >( control_torque ) );
+    TorqueModelMap torqueModelMap = createTorqueModelsMap( bodyMap, torqueMap );
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////             CREATE INSTRUMENT MODELS               ////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Instrument errors
+    Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor;
+    Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment;
+
+    std::default_random_engine generator;
+    std::normal_distribution< double > distributionOne( 0.0, gyroscopeBiasStandardDeviation );
+    std::normal_distribution< double > distributionTwo( 0.0, gyroscopeScaleFactorStandardDeviation );
+    std::normal_distribution< double > distributionThree( 0.0, 1.0e-3 );
+    for ( unsigned int i = 0; i < 6; i++ )
+    {
+        if ( i < 3 )
+        {
+            accelerationBias[ i ] = distributionTwo( generator );
+            accelerometerScaleFactor[ i ] = distributionTwo( generator );
+            gyroscopeBias[ i ] = distributionOne( generator );
+            gyroscopeScaleFactor[ i ] = distributionTwo( generator );
+        }
+        accelerometerMisalignment[ i ] = distributionThree( generator );
+        gyroscopeMisalignment[ i ] = distributionThree( generator );
+    }
+
+    // Create navigation instruments object
+    boost::shared_ptr< NavigationInstrumentsModel > onboardInstruments =
+            boost::make_shared< NavigationInstrumentsModel >( bodyMap, accelerationModelMap, "Satellite" );
+
+    // Add inertial measurement unit
+    onboardInstruments->addInertialMeasurementUnit( accelerationBias, accelerometerScaleFactor,
+                                                    accelerometerMisalignment, accelerometerAccuracy,
+                                                    gyroscopeBias, gyroscopeScaleFactor,
+                                                    gyroscopeMisalignment, gyroscopeAccuracy );
+
+    // Ad star tracker
+    onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE DYNAMICS SETTINGS               ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Create onboard computer object
+    boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
+                controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
 
     // Define termination conditions
     std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
@@ -408,6 +422,19 @@ int main( )
     // Create integrator settings
     boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
                 euler, simulationStartEpoch, simulationConstantStepSize );
+
+    // Dependent variables
+    std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
+    dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
+                                          total_acceleration_dependent_variable, "Satellite", "Mars" ) );
+    dependentVariablesList.push_back( boost::make_shared< SingleAccelerationDependentVariableSaveSettings >(
+                                          aerodynamic, "Satellite", "Mars", false ) );
+    dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
+                                          "Satellite", reference_frames::angle_of_attack ) );
+    dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
+                                          "Satellite", reference_frames::angle_of_sideslip ) );
+    dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
+                                          "Satellite", reference_frames::bank_angle ) );
 
     // Create propagation settings for translational dynamics
     boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
@@ -425,7 +452,9 @@ int main( )
     propagatorSettingsList.push_back( translationalPropagatorSettings );
     propagatorSettingsList.push_back( rotationalPropagatorSettings );
     boost::shared_ptr< PropagatorSettings< > > propagatorSettings =
-            boost::make_shared< MultiTypePropagatorSettings< > >( propagatorSettingsList, terminationSettings );
+            boost::make_shared< MultiTypePropagatorSettings< > >(
+                propagatorSettingsList, terminationSettings,
+                boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList ) );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
@@ -444,6 +473,7 @@ int main( )
     std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > quaternionsRotationalIntegrationResult;
+    std::map< double, Eigen::VectorXd > dependentVariablesResults = dynamicsSimulator.getDependentVariableHistory( );
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
@@ -460,8 +490,8 @@ int main( )
         quaternionsRotationalIntegrationResult[ stateIterator->first ] = currentFullState.segment( 6, 7 );
 
         // Copute current Keplerian state
-        keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements( currentCartesianState,
-                                                                                                               marsGravitationalParameter );
+        keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
+                    currentCartesianState, marsGravitationalParameter );
     }
 
     // Get estimated states
@@ -481,6 +511,10 @@ int main( )
         quaternionsRotationalEstimationResult[ stateIterator->first ] = stateIterator->second.second;
     }
 
+    // Get instrument measurements
+    std::map< double, Eigen::Vector6d > inertialMeasurementUnitMeasurements =
+            onboardInstruments->getCurrentOrbitHistoryOfInertialMeasurmentUnitMeasurements( );
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////        PROVIDE OUTPUT TO CONSOLE AND FILES           //////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -489,11 +523,15 @@ int main( )
     writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "cartesianPropagated.dat", getOutputPath( ) );
     writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "keplerianPropagated.dat", getOutputPath( ) );
     writeDataMapToTextFile( quaternionsRotationalIntegrationResult, "rotationalPropagated.dat", getOutputPath( ) );
+    writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", getOutputPath( ) );
 
     // Write estimated satellite state hisotry to files
     writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", getOutputPath( ) );
     writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", getOutputPath( ) );
     writeDataMapToTextFile( quaternionsRotationalEstimationResult, "rotationalEstimated.dat", getOutputPath( ) );
+
+    // Write measurements to file
+    writeDataMapToTextFile( inertialMeasurementUnitMeasurements, "inertialMeasurements.dat", getOutputPath( ) );
 
     // Final statement
     // The exit code EXIT_SUCCESS indicates that the program was successfully executed
