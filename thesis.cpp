@@ -139,7 +139,7 @@ int main( )
 
     // Get and set Mars physical parameters
     double marsGravitationalParameter = bodyMap.at( "Mars" )->getGravityFieldModel( )->getGravitationalParameter( );
-    double marsAtmosphericInterfaceAltitude = 300.0e3;
+    double marsAtmosphericInterfaceAltitude = 250.0e3;
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
@@ -251,7 +251,7 @@ int main( )
             boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
     NamedBodyMap onboardBodyMap = createBodies( onboardBodySettings );
 
-    std::vector< double > vectorOfModelSpecificParameters = { 2.424e-08, 115.0e3, 6533.0, -1.0, 0.0, 0.0 };
+    std::vector< double > vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
     onboardBodyMap[ "Mars" ]->setAtmosphereModel(
                 boost::make_shared< CustomConstantTemperatureAtmosphere >( three_term_atmosphere_model, 215.0, 197.0, 1.3,
                                                                            vectorOfModelSpecificParameters ) );
@@ -440,6 +440,8 @@ int main( )
                                           "Satellite", reference_frames::angle_of_sideslip ) );
     dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
                                           "Satellite", reference_frames::bank_angle ) );
+    dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
+                                          local_density_dependent_variable, "Satellite", "Mars" ) );
 
     // Create propagation settings for translational dynamics
     boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
