@@ -98,7 +98,7 @@ int main( )
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR +
             30.0 * 6.0 * physical_constants::JULIAN_DAY;
     const double simulationEndEpoch = //600.0 + simulationStartEpoch;
-            10.0 * physical_constants::JULIAN_DAY + simulationStartEpoch;
+            2.0 * physical_constants::JULIAN_DAY + simulationStartEpoch;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -232,7 +232,7 @@ int main( )
 
     // Controller gains
     Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 0.0 );
-    proportionalGain << 1.0e-3, 5.0e-3, 1.0e-3;
+//    proportionalGain << 1.0e-3, 5.0e-3, 1.0e-3;
     Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );//1.0e-4 );
     Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );//1.0e-1 );
 
@@ -306,7 +306,7 @@ int main( )
                 initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
 
     // Create giudance system object
-    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( );
+    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 250e3, 320.0e3, 2800.0, 500.0e3, 0.19 );
 
     // Create navigation system object
     boost::shared_ptr< NavigationSystem > navigationSystem = boost::make_shared< NavigationSystem >(
@@ -460,6 +460,10 @@ int main( )
                                           "Satellite", reference_frames::bank_angle ) );
     dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
                                           local_density_dependent_variable, "Satellite", "Mars" ) );
+    dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
+                                          local_dynamic_pressure_dependent_variable, "Satellite", "Mars" ) );
+    dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
+                                          local_aerodynamic_heat_rate_dependent_variable, "Satellite", "Mars" ) );
 
     // Create propagation settings for translational dynamics
     boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
@@ -506,14 +510,12 @@ int main( )
         std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
         std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
 
-        double finalPropagatedTime = currentFullIntegrationResult.rbegin( )->first;
         Eigen::VectorXd finalPropagatedState = currentFullIntegrationResult.rbegin( )->second;
-        Eigen::Vector3d currentApoapsisManeuver = controlSystem->getScheduledApoapsisManeuver( );
 
         // Add estimated apoapsis maneuver to state and modify state
-        finalPropagatedState.segment( 3, 3 ) += currentApoapsisManeuver;
+        integratorSettings->initialTime_ = currentFullIntegrationResult.rbegin( )->first;
+        finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
         propagatorSettings->resetInitialStates( finalPropagatedState );
-        integratorSettings->initialTime_ = finalPropagatedTime;
 
         // Save results
         fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
