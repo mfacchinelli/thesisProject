@@ -98,7 +98,7 @@ int main( )
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR +
             30.0 * 6.0 * physical_constants::JULIAN_DAY;
     const double simulationEndEpoch = //600.0 + simulationStartEpoch;
-            2.0 * physical_constants::JULIAN_DAY + simulationStartEpoch;
+            3.5 * physical_constants::JULIAN_DAY + simulationStartEpoch;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -188,7 +188,7 @@ int main( )
     rotationalInitialState.segment( 0, 4 ) = initialQuaternion;
 
     // Simulation times
-    double simulationConstantStepSize = 1.0;
+    double simulationConstantStepSize = 0.1;
     double onboardComputerRefreshStepSize = simulationConstantStepSize; // seconds
     double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
 
@@ -483,7 +483,7 @@ int main( )
     boost::shared_ptr< PropagatorSettings< > > propagatorSettings =
             boost::make_shared< MultiTypePropagatorSettings< > >(
                 propagatorSettingsList, terminationSettings,
-                boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList ) );
+                boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList, false ) );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
@@ -506,7 +506,7 @@ int main( )
         dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >(
                     bodyMap, integratorSettings, propagatorSettings, true, false, false, true );
 
-        // Retrieve elements from onboard computer and systems
+        // Retrieve elements from dynamics simulator
         std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
         std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
 
@@ -607,11 +607,11 @@ int main( )
     writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", getOutputPath( ) );
     writeDataMapToTextFile( quaternionsRotationalEstimationResult, "rotationalEstimated.dat", getOutputPath( ) );
 
-    // Write estimated states directly from uscented Kalman filter
-    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( ),
-                            "filterStateEstimates.dat", getOutputPath( ) );
-    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( ),
-                            "filterCovarianceEstimates.dat", getOutputPath( ) );
+//    // Write estimated states directly from uscented Kalman filter
+//    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( ),
+//                            "filterStateEstimates.dat", getOutputPath( ) );
+//    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( ),
+//                            "filterCovarianceEstimates.dat", getOutputPath( ) );
 
     // Write other data to file
     writeDataMapToTextFile( controlTorques, "controlTorques.dat", getOutputPath( ) );
