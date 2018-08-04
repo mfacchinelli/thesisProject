@@ -107,7 +107,7 @@ int main( )
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR +
             30.0 * 6.0 * physical_constants::JULIAN_DAY;
     const double simulationEndEpoch = //600.0 + simulationStartEpoch;
-            1.4 * physical_constants::JULIAN_DAY + simulationStartEpoch;
+            0.25 * physical_constants::JULIAN_DAY + simulationStartEpoch;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -172,7 +172,7 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    double simulationConstantStepSize = 0.05;
+    double simulationConstantStepSize = 0.1;
     double onboardComputerRefreshStepSize = simulationConstantStepSize; // seconds
     double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
 
@@ -262,7 +262,7 @@ int main( )
                                                            referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
                                                        "Satellite" ) );
 
-    setGlobalFrameBodyEphemerides( onboardBodyMap, "Mars", "J2000" );
+    setGlobalFrameBodyEphemerides( onboardBodyMap, "SSB", "J2000" );
 
     // Define acceleration settings for onboard model
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > onboardAccelerationsOfSatellite;
@@ -288,6 +288,10 @@ int main( )
 
     // Create unscented Kalman filter settings object for navigation
     boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+//            boost::make_shared< RungeKuttaVariableStepSizeSettings< > >( rungeKuttaVariableStepSize, simulationStartEpoch,
+//                                                                         onboardComputerRefreshStepSize,
+//                                                                         RungeKuttaCoefficients::rungeKuttaFehlberg78,
+//                                                                         onboardComputerRefreshStepSize, onboardComputerRefreshStepSize );
             boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
     boost::shared_ptr< FilterSettings< > > filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
                 systemUncertainty, measurementUncertainty, simulationStartEpoch, initialEstimatedStateVector,
@@ -414,7 +418,7 @@ int main( )
 
     // Define termination conditions
     std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
-    terminationSettingsList.push_back( boost::make_shared< CustomTerminationSettings >(
+    terminationSettingsList.push_back( boost::make_shared< PropagationCustomTerminationSettings >(
                                            boost::bind( &OnboardComputerModel::checkStopCondition, onboardComputer, _1 ) ) );
     terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch ) );
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =

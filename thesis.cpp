@@ -429,7 +429,7 @@ int main( )
 
     // Define termination conditions
     std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
-    terminationSettingsList.push_back( boost::make_shared< CustomTerminationSettings >(
+    terminationSettingsList.push_back( boost::make_shared< PropagationCustomTerminationSettings >(
                                            boost::bind( &OnboardComputerModel::checkStopCondition, onboardComputer, _1 ) ) );
     terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch ) );
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
