@@ -226,15 +226,15 @@ list(APPEND TUDAT_APPLICATION_ESTIMATION_LIBRARIES tudat_simulation_setup tudat_
    tudat_filters tudat_basic_mathematics tudat_input_output tudat_basics ${TUDAT_APPLICATION_EXTERNAL_LIBRARIES})
 
 
-## Add Thesis application.
-#add_executable(application_Thesis "${SRCROOT}/thesis.cpp")
-#setup_executable_target(application_Thesis "${SRCROOT}")
-#target_link_libraries(application_Thesis ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
+# Add Thesis application.
+add_executable(application_Thesis "${SRCROOT}/thesis.cpp")
+setup_executable_target(application_Thesis "${SRCROOT}")
+target_link_libraries(application_Thesis ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
 
-#add_executable(application_ThesisTransOnly "${SRCROOT}/thesisTransOnly.cpp")
-#setup_executable_target(application_ThesisTransOnly "${SRCROOT}")
-#target_link_libraries(application_ThesisTransOnly ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
+add_executable(application_ThesisTransOnly "${SRCROOT}/thesisTransOnly.cpp")
+setup_executable_target(application_ThesisTransOnly "${SRCROOT}")
+target_link_libraries(application_ThesisTransOnly ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
 
-#add_executable(application_ThesisTransOnlyIMAN "${SRCROOT}/thesisTransOnlyIMAN.cpp")
-#setup_executable_target(application_ThesisTransOnlyIMAN "${SRCROOT}")
-#target_link_libraries(application_ThesisTransOnlyIMAN ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
+add_executable(application_ThesisTransOnlyIMAN "${SRCROOT}/thesisTransOnlyIMAN.cpp")
+setup_executable_target(application_ThesisTransOnlyIMAN "${SRCROOT}")
+target_link_libraries(application_ThesisTransOnlyIMAN ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES} ${Boost_LIBRARIES})
