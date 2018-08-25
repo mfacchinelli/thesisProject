@@ -207,10 +207,6 @@ if(USE_NRLMSISE00)
  list(APPEND TUDAT_APPLICATION_EXTERNAL_LIBRARIES nrlmsise00)
 endif()
 
-#if(USE_SPARTA)
-#    list(APPEND TUDAT_APPLICATION_EXTERNAL_LIBRARIES tudat_sparta_interface)
-#endif()
-
 
 list(APPEND TUDAT_APPLICATION_PROPAGATION_LIBRARIES tudat_simulation_setup tudat_ground_stations tudat_propagators
    tudat_aerodynamics tudat_system_models tudat_guidance_navigation_control tudat_geometric_shapes tudat_relativity tudat_gravitation tudat_mission_segments
