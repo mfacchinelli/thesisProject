@@ -96,7 +96,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 0.66 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 0.8 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -139,8 +139,6 @@ int main( )
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
-    std::cerr << "Sun gravity is OFF." << std::endl;
-    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
 
     // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
@@ -178,7 +176,7 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.01; // 10 Hz
+    const double simulationConstantStepSize = 0.1; // 20 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.0025; // 400 Hz
     const double ratioOfOnboardOverSimulatedTimes = 1.0;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -195,16 +193,16 @@ int main( )
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
     Eigen::Matrix12d initialEstimatedStateCovarianceMatrix = Eigen::Matrix12d::Identity( );
 
-//    // Altimeter specifications
-//    Eigen::Vector3d altimeterBodyFixedPointingDirection = -Eigen::Vector3d::UnitZ( );
-//    std::pair< double, double > altimeterAltitudeRange = std::make_pair( 0.0, 5.0e6 );
-//    boost::function< double( double ) > altimeterAccuracyFunction = boost::lambda::constant( 0.0 );
+    // Altimeter specifications
+    Eigen::Vector3d altimeterBodyFixedPointingDirection = -Eigen::Vector3d::UnitZ( );
+    std::pair< double, double > altimeterAltitudeRange = std::make_pair( 0.0, 5.0e6 );
+    boost::function< double( double ) > altimeterAccuracyFunction = boost::lambda::constant( 0.0 );
 
-    // Define instrument accuracy
+    // Deifine instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
-    const double gyroscopeScaleFactorStandardDeviation = 1.0e-4;
+    const double gyroscopeScaleFactorStandardDeviation = 1e-4;
     const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
@@ -226,7 +224,9 @@ int main( )
 //            Eigen::Vector3d::Constant( std::pow( gyroscopeScaleFactorStandardDeviation, 2 ) );
     Eigen::Matrix12d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0, 2 ) ).asDiagonal( );
+    Eigen::Matrix4d measurementUncertainty;
+    measurementUncertainty.block( 0, 0, 3, 3 ) = Eigen::Vector3d::Constant( 1.0 ).asDiagonal( );
+    measurementUncertainty( 3, 3 ) = std::pow( 1.0e4, 2 );
 //            std::pow( 1.0e3, 2 ) * ( accelerometerAccuracy.cwiseProduct( accelerometerAccuracy ) ).asDiagonal( );
 
     // Aerodynamic coefficients
@@ -278,7 +278,7 @@ int main( )
 
     // Define acceleration settings for onboard model
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > onboardAccelerationsOfSatellite;
-    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 1, 0 ) );
+    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 4, 4 ) );
     onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
     // Set accelerations settings
@@ -300,7 +300,7 @@ int main( )
     // Create unscented Kalman filter settings object for navigation
     bool useUnscentedKalmanFilter = false;
     boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
-            boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, onboardComputerRefreshStepSize );
+            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
     boost::shared_ptr< FilterSettings< > > filteringSettings;
     if ( useUnscentedKalmanFilter )
     {
@@ -319,8 +319,8 @@ int main( )
     boost::shared_ptr< NavigationSystem > navigationSystem = boost::make_shared< NavigationSystem >(
                 onboardBodyMap, onboardAccelerationModelMap, "Satellite", "Mars",
                 filteringSettings, selectedOnboardAtmosphereModel, marsAtmosphericInterfaceAltitude, marsReducedAtmosphericInterfaceAltitude,
-                periapseEstimatorConstant, numberOfRequiredAtmosphereSamplesForInitiation, frequencyOfDeepSpaceNetworkTracking );
-//                altimeterBodyFixedPointingDirection, altimeterAltitudeRange );
+                periapseEstimatorConstant, numberOfRequiredAtmosphereSamplesForInitiation, frequencyOfDeepSpaceNetworkTracking,
+                altimeterBodyFixedPointingDirection, altimeterAltitudeRange );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
@@ -365,7 +365,7 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 1, 0 ) );
+    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
         if ( bodiesToCreate.at( i ) != "Mars" )
@@ -373,8 +373,7 @@ int main( )
             accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
         }
     }
-//    accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
-    std::cerr << "Solar radiation is OFF." << std::endl;
+    accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
     // Set accelerations settings
@@ -420,8 +419,8 @@ int main( )
     // Add star tracker
     onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
-//    // Add altimeter
-//    onboardInstruments->addAltimeter( altimeterBodyFixedPointingDirection, altimeterAltitudeRange, altimeterAccuracyFunction );
+    // Add altimeter
+    onboardInstruments->addAltimeter( altimeterBodyFixedPointingDirection, altimeterAltitudeRange, altimeterAccuracyFunction );
 
     // Add Deep Space Network tracking
     onboardInstruments->addDeepSpaceNetwork( deepSpaceNetworkPositionAccuracy, deepSpaceNetworkVelocityAccuracy,

@@ -30,8 +30,8 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     std::string filePath_( __FILE__ );
 
     // Strip filename from temporary string and return root-path string.
-    std::string reducedPath = filePath_.substr( 0, filePath_.length( ) - std::string( "thesisTransOnlyIMAN.cpp" ).length( ) );
-    std::string outputPath = reducedPath + "SimulationOutputTransOnlyIMAN/";
+    std::string reducedPath = filePath_.substr( 0, filePath_.length( ) - std::string( "thesisTransOnlyIMANLoop.cpp" ).length( ) );
+    std::string outputPath = reducedPath + "SimulationOutputTransOnlyIMANLoop/";
     if ( extraDirectory != "" )
     {
         outputPath += extraDirectory;
@@ -80,6 +80,7 @@ int main( )
     using namespace tudat::filters;
     using namespace tudat::gravitation;
     using namespace tudat::input_output;
+    using namespace tudat::interpolators;
     using namespace tudat::numerical_integrators;
     using namespace tudat::orbital_element_conversions;
     using namespace tudat::propagators;
@@ -96,7 +97,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 0.66 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 4.5 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -178,8 +179,8 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.01; // 10 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.0025; // 400 Hz
+    const double simulationConstantStepSize = 0.1; // 10 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
     const double ratioOfOnboardOverSimulatedTimes = 1.0;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
@@ -439,24 +440,19 @@ int main( )
     boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
                 controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
 
+    // Create integrator settings
+    boost::shared_ptr< IntegratorSettings< > > integratorSettings =
+            boost::make_shared< RungeKuttaVariableStepSizeSettingsScalarTolerances< > >(
+                simulationStartEpoch, simulationConstantStepSize, RungeKuttaCoefficients::rungeKuttaFehlberg78,
+                1.0e-5, 5.0e1, 1.0e-15, 1.0e-15 );
+
     // Define termination conditions
     std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
-    terminationSettingsList.push_back( boost::make_shared< PropagationCustomTerminationSettings >(
-                                           boost::bind( &OnboardComputerModel::checkStopCondition, onboardComputer, _1 ) ) );
-
-    boost::shared_ptr< SingleDependentVariableSaveSettings > terminationDependentVariable =
-            boost::make_shared< SingleDependentVariableSaveSettings >( altitude_dependent_variable, "Satellite", "Mars" );
-    terminationSettingsList.push_back( boost::make_shared< PropagationDependentVariableTerminationSettings >(
-                                           terminationDependentVariable, 0.95 * marsPropagationAtmosphericInterfaceAltitude, true ) );
-
     terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch ) );
-    terminationSettingsList.push_back( boost::make_shared< PropagationCPUTimeTerminationSettings >( 10800.0 ) );
+    terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationStartEpoch +
+                                                                                                 2.0 * physical_constants::JULIAN_DAY ) );
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
             boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
-
-    // Create integrator settings
-    boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
-                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, ratioOfOnboardOverSimulatedTimes, false );
 
     // Dependent variables
     std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
@@ -518,12 +514,8 @@ int main( )
         // Retrieve elements from dynamics simulator
         std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
         std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
-        Eigen::VectorXd finalPropagatedState = currentFullIntegrationResult.rbegin( )->second;
 
-        // Reset time
-        integratorSettings->initialTime_ = currentFullIntegrationResult.rbegin( )->first;
-
-        // Reset other conditions based on termination reason
+        // Check why propagation was interrupted
         if ( dynamicsSimulator->getPropagationTerminationReason( )->getPropagationTerminationReason( ) == termination_condition_reached )
         {
             // Check which condition was met
@@ -531,46 +523,55 @@ int main( )
                     boost::dynamic_pointer_cast< PropagationTerminationDetailsFromHybridCondition >(
                         dynamicsSimulator->getPropagationTerminationReason( ) );
             vectorOfTerminationConditions = hybridTerminationDetails->getWasConditionMetWhenStopping( );
-            if ( vectorOfTerminationConditions.at( 0 ) ) // onboard computer
+
+            // Create interpolators and simulate onboard orbit
+            boost::shared_ptr< OneDimensionalInterpolator< double, Eigen::VectorXd > > fullStateInterpolator =
+                    boost::make_shared< LagrangeInterpolator< double, Eigen::VectorXd, double > >( currentFullIntegrationResult, 6 );
+            boost::shared_ptr< OneDimensionalInterpolator< double, Eigen::VectorXd > > dependentVariablesInterpolator =
+                    boost::make_shared< LagrangeInterpolator< double, Eigen::VectorXd, double > >( currentDependentVariablesResults, 6 );
+
+            // Inform user
+            std::cout << std::endl << "PROPAGATION TERMINATED. POST-PROCESSING RESULTS." << std::endl << std::endl;
+
+            // Start time loop
+            bool continuePostProcessing;
+            double currentTime = currentFullIntegrationResult.begin( )->first;
+            Eigen::VectorXd currentState;
+            Eigen::VectorXd currentDependentVariables;
+            do
             {
-                // Add estimated apoapsis maneuver to state
-                finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                // Get current time
+                currentTime += onboardComputerRefreshStepSize;
+
+                // Interpolate at current time
+                currentState = fullStateInterpolator->interpolate( currentTime );
+
+                // Update environment
+                dynamicsSimulator->getDynamicsStateDerivative( )->computeStateDerivative( currentTime, currentState );
+                dynamicsSimulator->getDependentVariablesFunctions( )( );
+
+                // Check if stop condition is met
+                continuePostProcessing = !onboardComputer->checkStopCondition( currentTime );
             }
-            else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
-            {
-                // Extract termination object
-                boost::shared_ptr< PropagationDependentVariableTerminationSettings > altitudeTerminationSettings =
-                        boost::dynamic_pointer_cast< PropagationDependentVariableTerminationSettings >( terminationSettingsList.at( 1 ) );
+            while ( continuePostProcessing );
 
-                // Reset simulation variables
-                if ( altitudeTerminationSettings->useAsLowerLimit_ )
-                {
-                    // Change step size
-                    integratorSettings->initialTimeStep_ = simulationConstantStepSizeDuringAtmosphericPhase;
-                    navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSizeDuringAtmosphericPhase );
+            // Reset initial conditions
+            integratorSettings->initialTime_ = currentTime;
+            Eigen::VectorXd finalPropagatedState = currentState;
 
-                    // Change altitude termination settings
-                    altitudeTerminationSettings->limitValue_ = 1.05 * marsPropagationAtmosphericInterfaceAltitude;
-                }
-                else
-                {
-                    // Change step size
-                    integratorSettings->initialTimeStep_ = simulationConstantStepSize;
-                    navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSize );
+            // Add estimated apoapsis maneuver and reset state
+            finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+            propagatorSettings->resetInitialStates( finalPropagatedState );
 
-                    // Change altitude termination settings
-                    altitudeTerminationSettings->limitValue_ = 0.95 * marsPropagationAtmosphericInterfaceAltitude;
-                }
+            // Overwrite propagation termination settings
+            terminationSettingsList.at( 1 ) =
+                    boost::make_shared< PropagationTimeTerminationSettings >( currentTime + 2.0 * physical_constants::JULIAN_DAY );
+            terminationSettings = boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
+            boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >(
+                        propagatorSettings )->resetTerminationSettings( terminationSettings );
 
-                // Invert flag for next propagation
-                altitudeTerminationSettings->useAsLowerLimit_ = !altitudeTerminationSettings->useAsLowerLimit_;
-
-                // Overwrite propagation termination settings
-                terminationSettingsList.at( 1 ) = altitudeTerminationSettings;
-                terminationSettings = boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
-                boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >(
-                            propagatorSettings )->resetTerminationSettings( terminationSettings );
-            }
+            // Overwrite dynamics simulator
+            dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
         }
         else
         {
@@ -583,29 +584,18 @@ int main( )
             break;
         }
 
-        // Reset state
-        propagatorSettings->resetInitialStates( finalPropagatedState );
-
-        // Overwrite dynamics simulator
-        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
-
         // Save results
-        if ( fullIntegrationResult.size( ) > 0 )
-        {
-            fullIntegrationResult.erase( integratorSettings->initialTime_ );
-            fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
-        }
         fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
         fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
     }
-    while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );
+    while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 0 ) ) );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Save frequency and output path
-    const unsigned int saveFrequency = 5 * static_cast< unsigned int >( onboardComputerRefreshRate );
+    unsigned int saveFrequency = 1;//5 * static_cast< unsigned int >( onboardComputerRefreshRate );
 //    std::string outputPath = getOutputPath( std::to_string( static_cast< unsigned int >( ratioOfOnboardOverSimulatedTimes ) ) );
     std::string outputPath = getOutputPath( );
 
@@ -640,6 +630,7 @@ int main( )
     writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", outputPath );
 
     // Get estimated states
+    saveFrequency = 5 * static_cast< unsigned int >( onboardComputerRefreshRate );
     std::map< double, std::pair< Eigen::Vector6d, Eigen::Vector6d > > fullEstimationResult =
             navigationSystem->getHistoryOfEstimatedStates( );
     std::map< double, Eigen::Vector6d > cartesianTranslationalEstimationResult;
