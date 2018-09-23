@@ -238,7 +238,12 @@ setup_executable_target(application_ThesisTransOnlyIMAN "${SRCROOT}")
 target_link_libraries(application_ThesisTransOnlyIMAN ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
     ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
 
-add_executable(application_ThesisTransOnlyIMANLoop "${SRCROOT}/thesisTransOnlyIMANLoop.cpp")
-setup_executable_target(application_ThesisTransOnlyIMANLoop "${SRCROOT}")
-target_link_libraries(application_ThesisTransOnlyIMANLoop ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
+add_executable(application_ThesisTransOnlyAltimeter "${SRCROOT}/thesisTransOnlyAltimeter.cpp")
+setup_executable_target(application_ThesisTransOnlyAltimeter "${SRCROOT}")
+target_link_libraries(application_ThesisTransOnlyAltimeter ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
     ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
+
+#add_executable(application_ThesisTransOnlyIMANLoop "${SRCROOT}/thesisTransOnlyIMANLoop.cpp")
+#setup_executable_target(application_ThesisTransOnlyIMANLoop "${SRCROOT}")
+#target_link_libraries(application_ThesisTransOnlyIMANLoop ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
+#    ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
