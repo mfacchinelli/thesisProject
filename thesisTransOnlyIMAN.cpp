@@ -178,9 +178,9 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.1; // 10 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
-    const double ratioOfOnboardOverSimulatedTimes = 1.0;
+    const double simulationConstantStepSize = 0.05; // 20 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.0005; // 2000 Hz
+    const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
             simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -210,8 +210,8 @@ int main( )
     const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
     // System and measurment uncertainties
-    const double positionStandardDeviation = 1.0e2;
-    const double translationalVelocityStandardDeviation = 1.0e-1;
+    const double positionStandardDeviation = 1.0e1;
+    const double translationalVelocityStandardDeviation = 1.0e-2;
     const double attitudeStandardDeviation = 1.0e-4;
     Eigen::Vector12d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
@@ -223,7 +223,7 @@ int main( )
 //            Eigen::Vector3d::Constant( std::pow( gyroscopeScaleFactorStandardDeviation, 2 ) );
     Eigen::Matrix12d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0, 2 ) ).asDiagonal( );
+    Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e0, 2 ) ).asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -274,7 +274,7 @@ int main( )
 
     // Define acceleration settings for onboard model
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > onboardAccelerationsOfSatellite;
-    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 4, 4 ) );
+    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 1, 0 ) );
     onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
     // Set accelerations settings
@@ -360,8 +360,8 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-    std::cerr << "Full Mars gravity is OFF." << std::endl;
-    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 4, 4 ) );
+//    std::cerr << "Full Mars gravity is OFF." << std::endl;
+    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
         if ( bodiesToCreate.at( i ) != "Mars" )
@@ -449,7 +449,7 @@ int main( )
 
     // Create integrator settings
     boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
-                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, 1, false );
+                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, ratioOfOnboardOverSimulatedTimes, false );
 
     // Dependent variables
     std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
@@ -599,7 +599,7 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Save frequency and output path
-    const unsigned int saveFrequency = 2 * static_cast< unsigned int >( onboardComputerRefreshRate );
+    const unsigned int saveFrequency = std::min< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
     std::string outputPath = getOutputPath( );
 
     // Compute map of Kepler elements
@@ -643,7 +643,7 @@ int main( )
     for ( std::map< double, std::pair< Eigen::Vector6d, Eigen::Vector6d > >::const_iterator
           stateIterator = fullEstimationResult.begin( ); stateIterator != fullEstimationResult.end( ); stateIterator++, i++ )
     {
-        if ( ( i % static_cast< unsigned int >( saveFrequency / ratioOfOnboardOverSimulatedTimes ) ) == 0 )
+        if ( ( i % saveFrequency ) == 0 )
         {
             cartesianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.first;
             keplerianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.second;
