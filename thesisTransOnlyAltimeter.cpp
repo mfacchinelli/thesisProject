@@ -83,6 +83,7 @@ int main( )
     using namespace tudat::numerical_integrators;
     using namespace tudat::orbital_element_conversions;
     using namespace tudat::propagators;
+    using namespace tudat::reference_frames;
     using namespace tudat::simulation_setup;
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
@@ -178,9 +179,9 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.1; // 10 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
-    const double ratioOfOnboardOverSimulatedTimes = 1.0;
+    const double simulationConstantStepSize = 0.05; // 10 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.05; // 200 Hz
+    const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
             simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -191,20 +192,51 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
-    Eigen::Vector12d initialEstimatedStateVector = Eigen::Vector12d::Zero( );
+    Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-    Eigen::Matrix12d initialEstimatedStateCovarianceMatrix = Eigen::Matrix12d::Identity( );
+    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
 
     // Altimeter specifications
-    Eigen::Vector3d altimeterBodyFixedPointingDirection = -Eigen::Vector3d::UnitZ( );
-    std::pair< double, double > altimeterAltitudeRange = std::make_pair( 0.0, 5.0e6 );
-    boost::function< double( double ) > altimeterAccuracyFunction = boost::lambda::constant( 0.0 );
+    double altimeterOffsetAngle = convertDegreesToRadians( 20.0 );
+    double altimeterSpacingAngle = 2.0 / 3.0 * mathematical_constants::PI;
+    std::vector< Eigen::Vector3d > altimeterPointingDirection;
+
+    altimeterPointingDirection.resize( 4 );
+    altimeterPointingDirection.at( 0 ) = - Eigen::Vector3d::UnitZ( );
+    altimeterPointingDirection.at( 1 ) = Eigen::AngleAxisd( - altimeterOffsetAngle, Eigen::Vector3d::UnitY( ) ) *
+            altimeterPointingDirection.at( 0 );
+    altimeterPointingDirection.at( 2 ) = Eigen::AngleAxisd( - altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+            altimeterPointingDirection.at( 1 );
+    altimeterPointingDirection.at( 3 ) = Eigen::AngleAxisd( altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+            altimeterPointingDirection.at( 1 );
+
+//    altimeterPointingDirection.resize( 3 );
+//    altimeterPointingDirection.at( 0 ) = Eigen::AngleAxisd( - altimeterOffsetAngle, Eigen::Vector3d::UnitY( ) ) *
+//            ( - Eigen::Vector3d::UnitZ( ) );
+//    altimeterPointingDirection.at( 1 ) = Eigen::AngleAxisd( - altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+//            altimeterPointingDirection.at( 0 );
+//    altimeterPointingDirection.at( 2 ) = Eigen::AngleAxisd( altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+//            altimeterPointingDirection.at( 0 );
+
+//    altimeterPointingDirection.resize( 3 );
+//    altimeterPointingDirection.at( 0 ) = Eigen::AngleAxisd( - altimeterOffsetAngle, Eigen::Vector3d::UnitY( ) ) *
+//            ( - Eigen::Vector3d::UnitZ( ) );
+//    altimeterPointingDirection.at( 1 ) = Eigen::AngleAxisd( 0.1, Eigen::Vector3d::UnitX( ) ) *
+//            Eigen::AngleAxisd( - altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+//            altimeterPointingDirection.at( 0 );
+//    altimeterPointingDirection.at( 2 ) = Eigen::AngleAxisd( 0.1, Eigen::Vector3d::UnitY( ) ) *
+//            Eigen::AngleAxisd( altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
+//            altimeterPointingDirection.at( 0 );
+    // Note that the negative signs are included due to the different definition of rotations in Eigen
+
+    std::pair< double, double > altimeterAltitudeRange = std::make_pair( 75.0e3, 5000.0e3 );
+    boost::function< double( double ) > altimeterAccuracyFunction = boost::lambda::constant( 100.0 );
 
     // Deifine instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
-    const double gyroscopeScaleFactorStandardDeviation = 1.0e-4;
+    const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
     const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
@@ -215,21 +247,21 @@ int main( )
     const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
     // System and measurment uncertainties
-    const double positionStandardDeviation = 1.0e2;
-    const double translationalVelocityStandardDeviation = 1.0e-1;
+    const double positionStandardDeviation = 1.0e6;
+    const double translationalVelocityStandardDeviation = 1.0e3;
     const double attitudeStandardDeviation = 1.0e-4;
-    Eigen::Vector12d diagonalOfSystemUncertainty;
+    Eigen::Vector9d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
+            Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
 //            Eigen::Vector4d::Constant( std::pow( attitudeStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( accelerometerScaleFactorStandardDeviation, 2 ) );
-//            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) ),
-//            Eigen::Vector3d::Constant( std::pow( gyroscopeScaleFactorStandardDeviation, 2 ) );
-    Eigen::Matrix12d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+//            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) );
+    Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Vector1d measurementUncertainty;
-    measurementUncertainty[ 0 ] = std::pow( 1e2, 2 );
+    Eigen::VectorXd diagonalOfMeasurementUncertainty;
+    diagonalOfMeasurementUncertainty.resize( 3 * altimeterPointingDirection.size( ) );
+    diagonalOfMeasurementUncertainty.setConstant( std::pow( 1.0e9, 2 ) );
+    Eigen::MatrixXd measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -322,7 +354,7 @@ int main( )
                 onboardBodyMap, onboardAccelerationModelMap, "Satellite", "Mars",
                 filteringSettings, selectedOnboardAtmosphereModel, marsAtmosphericInterfaceAltitude, marsReducedAtmosphericInterfaceAltitude,
                 periapseEstimatorConstant, numberOfRequiredAtmosphereSamplesForInitiation, frequencyOfDeepSpaceNetworkTracking,
-                altimeterBodyFixedPointingDirection, altimeterAltitudeRange );
+                altimeterPointingDirection, vertical_frame, altimeterAltitudeRange );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
@@ -423,7 +455,7 @@ int main( )
     onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
     // Add altimeter
-    onboardInstruments->addAltimeter( altimeterBodyFixedPointingDirection, altimeterAltitudeRange, altimeterAccuracyFunction );
+    onboardInstruments->addAltimeter( altimeterPointingDirection, vertical_frame, altimeterAltitudeRange, altimeterAccuracyFunction );
 
     // Add Deep Space Network tracking
     onboardInstruments->addDeepSpaceNetwork( deepSpaceNetworkPositionAccuracy, deepSpaceNetworkVelocityAccuracy,
@@ -458,7 +490,7 @@ int main( )
 
     // Create integrator settings
     boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
-                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, 1, false );
+                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, ratioOfOnboardOverSimulatedTimes, false );
 
     // Dependent variables
     std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
@@ -467,11 +499,11 @@ int main( )
     dependentVariablesList.push_back( boost::make_shared< SingleAccelerationDependentVariableSaveSettings >(
                                           aerodynamic, "Satellite", "Mars", false ) );
     dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                          "Satellite", reference_frames::angle_of_attack ) );
+                                          "Satellite", angle_of_attack ) );
     dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                          "Satellite", reference_frames::angle_of_sideslip ) );
+                                          "Satellite", angle_of_sideslip ) );
     dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                          "Satellite", reference_frames::bank_angle ) );
+                                          "Satellite", bank_angle ) );
     dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
                                           local_density_dependent_variable, "Satellite", "Mars" ) );
     dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
@@ -608,7 +640,7 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Save frequency and output path
-    const unsigned int saveFrequency = 2 * static_cast< unsigned int >( onboardComputerRefreshRate );
+    const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
     std::string outputPath = getOutputPath( );
 
     // Compute map of Kepler elements
@@ -652,7 +684,7 @@ int main( )
     for ( std::map< double, std::pair< Eigen::Vector6d, Eigen::Vector6d > >::const_iterator
           stateIterator = fullEstimationResult.begin( ); stateIterator != fullEstimationResult.end( ); stateIterator++, i++ )
     {
-        if ( ( i % static_cast< unsigned int >( saveFrequency / ratioOfOnboardOverSimulatedTimes ) ) == 0 )
+        if ( ( i % saveFrequency ) == 0 )
         {
             cartesianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.first;
             keplerianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.second;
@@ -665,7 +697,7 @@ int main( )
 
     // Filter results
     bool extractFilterResults = true;
-    Eigen::Vector6d estimatedAccelerometerErrors;
+    Eigen::Vector3d estimatedAccelerometerErrors;
     if ( extractFilterResults )
     {
         // Get estimated states from filter
@@ -679,7 +711,7 @@ int main( )
         std::map< double, Eigen::VectorXd > filterStateEstimates;
         std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
         std::vector< std::vector< double > > currentVariableHistory;
-        currentVariableHistory.resize( 6 );
+        currentVariableHistory.resize( estimatedAccelerometerErrors.size( ) );
         for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullFilterStateEstimates.begin( );
               stateIterator != fullFilterStateEstimates.end( ); stateIterator++, i++ )
         {
@@ -689,7 +721,7 @@ int main( )
                 filterCovarianceEstimates[ stateIterator->first ] =
                         Eigen::VectorXd( fullFilterCovarianceEstimates[ stateIterator->first ].diagonal( ) );
             }
-            for ( unsigned int i = 0; i < 6; i++ )
+            for ( unsigned int i = 0; i < estimatedAccelerometerErrors.size( ); i++ )
             {
                 currentVariableHistory.at( i ).push_back( stateIterator->second[ i + 6 ] );
             }
@@ -752,7 +784,7 @@ int main( )
     }
 
     // Extract maneuver information
-    bool extractManeuverInformation = true;
+    bool extractManeuverInformation = false;
     if ( extractManeuverInformation )
     {
         std::map< unsigned int, std::pair< double, double > > pairOfPeriapsisCorridorBoundaries =

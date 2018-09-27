@@ -132,10 +132,10 @@ int main( )
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
     std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-//            boost::make_shared< TabulatedAtmosphereSettings >(
-//                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
+//    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
+//                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
+    bodySettings[ "Mars" ]->atmosphereSettings =  boost::make_shared< TabulatedAtmosphereSettings >(
+                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
@@ -210,9 +210,8 @@ int main( )
     const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
     // System and measurment uncertainties
-    const double positionStandardDeviation = 1.0e1;
-    const double translationalVelocityStandardDeviation = 1.0e-2;
-    const double attitudeStandardDeviation = 1.0e-4;
+    const double positionStandardDeviation = 1.0e0;
+    const double translationalVelocityStandardDeviation = 1.0e-3;
     Eigen::Vector12d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
@@ -220,7 +219,7 @@ int main( )
             Eigen::Vector3d::Constant( std::pow( accelerometerScaleFactorStandardDeviation, 2 ) );
     Eigen::Matrix12d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e0, 2 ) ).asDiagonal( );
+    Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e2, 2 ) ).asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -323,11 +322,24 @@ int main( )
     bodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
     bodyMap[ "Satellite" ]->setBodyInertiaTensor( spacecraftInertiaTensor );
 
+    // Aerodynamic coefficients from file
+    std::map< int, std::string > aerodynamicForceCoefficientFiles;
+    aerodynamicForceCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MRODragCoefficients.txt";
+    aerodynamicForceCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROLiftCoefficients.txt";
+
+    // Create aerodynamic coefficient settings
+    boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
+            readTabulatedAerodynamicCoefficientsFromFiles(
+                aerodynamicForceCoefficientFiles, referenceAreaAerodynamic,
+                boost::assign::list_of( angle_of_attack_dependent )( altitude_dependent ), true, true );
+
     // Set aerodynamic coefficient and radiation pressure settings
-    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
-                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
-                                                           referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
-                                                       "Satellite" ) );
+//    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
+//                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
+//                                                           referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
+//                                                       "Satellite" ) );
+    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface( createAerodynamicCoefficientInterface(
+                                                                    aerodynamicCoefficientSettings, "Satellite" ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
 
     // Finalize body creation.
@@ -568,8 +580,8 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Save frequency and output path
-    const unsigned int saveFrequency = std::min< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
-    std::string outputPath = getOutputPath( );
+    const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+    std::string outputPath = getOutputPath( "_" + std::to_string( ratioOfOnboardOverSimulatedTimes ) );
 
     // Compute map of Kepler elements
     unsigned int i = 0;
