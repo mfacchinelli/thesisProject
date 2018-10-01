@@ -209,6 +209,7 @@ int main( )
             altimeterPointingDirection.at( 1 );
     altimeterPointingDirection.at( 3 ) = Eigen::AngleAxisd( altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
             altimeterPointingDirection.at( 1 );
+    // Note that the negative signs are included due to the different definition of rotations in Eigen
 
 //    altimeterPointingDirection.resize( 3 );
 //    altimeterPointingDirection.at( 0 ) = Eigen::AngleAxisd( - altimeterOffsetAngle, Eigen::Vector3d::UnitY( ) ) *
@@ -217,6 +218,7 @@ int main( )
 //            altimeterPointingDirection.at( 0 );
 //    altimeterPointingDirection.at( 2 ) = Eigen::AngleAxisd( altimeterSpacingAngle, Eigen::Vector3d::UnitZ( ) ) *
 //            altimeterPointingDirection.at( 0 );
+    // Note that the negative signs are included due to the different definition of rotations in Eigen
 
 //    altimeterPointingDirection.resize( 3 );
 //    altimeterPointingDirection.at( 0 ) = Eigen::AngleAxisd( - altimeterOffsetAngle, Eigen::Vector3d::UnitY( ) ) *
