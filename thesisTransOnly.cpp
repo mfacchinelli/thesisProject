@@ -96,7 +96,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 0.1125 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -111,11 +111,11 @@ int main( )
     tabulatedAtmosphereFiles[ 2 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/temperature.dat";
     tabulatedAtmosphereFiles[ 3 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/gasConstant.dat";
     tabulatedAtmosphereFiles[ 4 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/specificHeatRatio.dat";
+    std::vector< AtmosphereIndependentVariables > atmosphereIndependentVariables = {
+        longitude_dependent_atmosphere, latitude_dependent_atmosphere, altitude_dependent_atmosphere };
     std::vector< AtmosphereDependentVariables > atmosphereDependentVariables = {
         density_dependent_atmosphere, pressure_dependent_atmosphere, temperature_dependent_atmosphere,
         gas_constant_dependent_atmosphere, specific_heat_ratio_dependent_atmosphere };
-    std::vector< AtmosphereIndependentVariables > atmosphereIndependentVariables = {
-        longitude_dependent_atmosphere, latitude_dependent_atmosphere, altitude_dependent_atmosphere };
     std::vector< interpolators::BoundaryInterpolationType > boundaryConditions =
             std::vector< interpolators::BoundaryInterpolationType >( 3, interpolators::use_boundary_value );
 
@@ -164,13 +164,13 @@ int main( )
     const double marsAtmosphericInterfaceAltitude = 200.0e3;
     const double marsReducedAtmosphericInterfaceAltitude = 150.0e3;
     const double periapseEstimatorConstant = 0.955;
-    const unsigned int frequencyOfDeepSpaceNetworkTracking = -1;//3
+    const unsigned int frequencyOfDeepSpaceNetworkTracking = -1;
     const unsigned int numberOfRequiredAtmosphereSamplesForInitiation = 7;
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 4708500.0;//26021000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.252203;//0.859882;
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;//4708500.0;//
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;//0.252203;//
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -619,7 +619,7 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Output path
-    std::string outputPath = getOutputPath( "low_ecc" );
+    std::string outputPath = getOutputPath( );
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;

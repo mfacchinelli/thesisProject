@@ -347,7 +347,7 @@ int main( )
                 "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
 
     // Set aerodynamic coefficient and radiation pressure settings
-    std::cerr << "Full aerodynamics are OFF." << std::endl;
+//    std::cerr << "Full aerodynamics are OFF." << std::endl;
     bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
                     createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
 //                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(

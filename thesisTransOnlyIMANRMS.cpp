@@ -91,7 +91,12 @@ int main( )
     ///////////////////////            SETTINGS LOOP                 //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Settings
+    // Initial conditions settings:
+    //      0 -> high eccentricity
+    //      1 -> low eccentricity
+    const unsigned int initialConditions = 1;
+
+    // Environment settings:
     //      0 -> (0,0) + red + exp
     //      1 -> (0,0) + red + [ ONB: exp & SIM: tab ]
     //      2 -> (0,0) + [ ONB: red & SIM: full ] + exp
@@ -100,8 +105,8 @@ int main( )
     //      5 -> [ ONB: (4,4) & SIM: (21,21) ] + red + [ ONB: exp & SIM: tab ]
     //      6 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + exp
     //      7 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + [ ONB: exp & SIM: tab ]
-    std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes = { 10, 100, 1000 };
-    for ( unsigned int simulation = 0; simulation < 8; simulation++ )
+    std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes = { 10, 100 };//, 1000
+    for ( unsigned int simulation = 0; simulation < 1; simulation++ )
     {
         for ( unsigned int ratioOfOnboardOverSimulatedTimes : vectorOfRatiosOfOnboardOverSimulatedTimes )
         {
@@ -114,7 +119,16 @@ int main( )
 
             // Set simulation time settings
             const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-            const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
+            double simulationEndEpoch;
+            switch ( initialConditions )
+            {
+            case 0:
+                simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
+                break;
+            case 1:
+                simulationEndEpoch = simulationStartEpoch + 0.1125 * physical_constants::JULIAN_DAY;
+                break;
+            }
 
             // Define body settings for simulation
             std::vector< std::string > bodiesToCreate;
@@ -204,8 +218,17 @@ int main( )
 
             // Set initial Keplerian elements for satellite
             Eigen::Vector6d initialStateInKeplerianElements;
-            initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
-            initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+            switch ( initialConditions )
+            {
+            case 0:
+                initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
+                initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+                break;
+            case 1:
+                initialStateInKeplerianElements( semiMajorAxisIndex ) = 4708500.0;
+                initialStateInKeplerianElements( eccentricityIndex ) = 0.252203;
+                break;
+            }
             initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
             initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
             initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -216,6 +239,7 @@ int main( )
                                                                                                    marsGravitationalParameter );
 
             // Simulation times
+            const bool useUnscentedKalmanFilter = false;
             const double simulationConstantStepSize = 0.005; // 200 Hz
             const double simulationConstantStepSizeDuringAtmosphericPhase = 0.0005; // 2000 Hz
             const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -224,7 +248,16 @@ int main( )
             const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
 
             // Save frequency
-            const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+            unsigned int saveFrequency;
+            switch ( initialConditions )
+            {
+            case 0:
+                saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+                break;
+            case 1:
+                saveFrequency = ratioOfOnboardOverSimulatedTimes;
+                break;
+            }
 
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
             ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
@@ -354,7 +387,6 @@ int main( )
                         255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
 
             // Create unscented Kalman filter settings object for navigation
-            bool useUnscentedKalmanFilter = false;
             boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
                     boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
             boost::shared_ptr< FilterSettings< > > filteringSettings;
@@ -687,24 +719,38 @@ int main( )
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             // Save frequency and output path
-            std::string outputPath = getOutputPath( std::to_string( simulation ) + "/" + std::to_string( ratioOfOnboardOverSimulatedTimes ) );
+            std::string outputPath;
+            switch ( initialConditions )
+            {
+            case 0:
+                outputPath = getOutputPath( std::to_string( simulation ) + "/" + std::to_string( ratioOfOnboardOverSimulatedTimes ) );
+                break;
+            case 1:
+                outputPath = getOutputPath( "low_ecc/" + std::to_string( simulation ) + "/" +
+                                            std::to_string( ratioOfOnboardOverSimulatedTimes ) );
+                break;
+            }
 
             // Compute map of Kepler elements
+            unsigned int i = 0;
             Eigen::VectorXd currentFullState;
             Eigen::Vector6d currentCartesianState;
             for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullIntegrationResult.begin( );
-                  stateIterator != fullIntegrationResult.end( ); stateIterator++ )
+                  stateIterator != fullIntegrationResult.end( ); stateIterator++, i++ )
             {
-                // Get current states
-                currentFullState = stateIterator->second;
-                currentCartesianState = currentFullState.segment( 0, 6 );
+                if ( ( i % saveFrequency ) == 0 )
+                {
+                    // Get current states
+                    currentFullState = stateIterator->second;
+                    currentCartesianState = currentFullState.segment( 0, 6 );
 
-                // Store translational and rotational states
-                cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
+                    // Store translational and rotational states
+                    cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
 
-                // Compute current Keplerian state
-                keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
-                            currentCartesianState, marsGravitationalParameter );
+                    // Compute current Keplerian state
+                    keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
+                                currentCartesianState, marsGravitationalParameter );
+                }
             }
 
             // Write propagation history to files
