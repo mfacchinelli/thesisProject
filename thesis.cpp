@@ -330,7 +330,7 @@ int main( )
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, aerodynamicMomentCoefficientFiles, referenceLengthAerodynamic,
                 referenceAreaAerodynamic, referenceLengthAerodynamic, momentReferencePoint,
-                boost::assign::list_of( angle_of_attack_dependent )( altitude_dependent ), true, true );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
 
     // Constant radiation pressure variables
     std::vector< std::string > occultingBodies;

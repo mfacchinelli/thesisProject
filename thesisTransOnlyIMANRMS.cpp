@@ -96,6 +96,18 @@ int main( )
     //      1 -> low eccentricity
     const unsigned int initialConditions = 1;
 
+    // Onboard comptuer frequencies
+    std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes;
+    switch ( initialConditions )
+    {
+    case 0:
+        vectorOfRatiosOfOnboardOverSimulatedTimes = { 10, 100, 1000 };
+        break;
+    case 1:
+        vectorOfRatiosOfOnboardOverSimulatedTimes = { 10, 100 };
+        break;
+    }
+
     // Environment settings:
     //      0 -> (0,0) + red + exp
     //      1 -> (0,0) + red + [ ONB: exp & SIM: tab ]
@@ -105,8 +117,7 @@ int main( )
     //      5 -> [ ONB: (4,4) & SIM: (21,21) ] + red + [ ONB: exp & SIM: tab ]
     //      6 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + exp
     //      7 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + [ ONB: exp & SIM: tab ]
-    std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes = { 10, 100 };//, 1000
-    for ( unsigned int simulation = 0; simulation < 1; simulation++ )
+    for ( unsigned int simulation = 0; simulation < 8; simulation++ )
     {
         for ( unsigned int ratioOfOnboardOverSimulatedTimes : vectorOfRatiosOfOnboardOverSimulatedTimes )
         {
@@ -617,6 +628,9 @@ int main( )
             std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
             std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
 
+            // Add initial time and state
+            fullIntegrationResult[ simulationStartEpoch ] = translationalInitialState;
+
             // Create loop for each orbit and check condition for stopping aerobraking at the end
             std::vector< bool > vectorOfTerminationConditions;
             do
@@ -707,9 +721,14 @@ int main( )
                 {
                     fullIntegrationResult.erase( integratorSettings->initialTime_ );
                     fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+                    currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+                    currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first);
                 }
-                fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
-                fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+                if ( !fullIntegrationResult.empty( ) )
+                {
+                    fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+                    fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+                }
             }
             while ( !( onboardComputer->isAerobrakingComplete( ) ||
                        vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );

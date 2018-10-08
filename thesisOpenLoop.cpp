@@ -331,7 +331,7 @@ int main( )
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, referenceAreaAerodynamic,
-                boost::assign::list_of( angle_of_attack_dependent )( altitude_dependent ), true, true );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
 
     // Set aerodynamic coefficient and radiation pressure settings
 //    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(

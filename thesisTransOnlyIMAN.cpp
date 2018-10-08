@@ -337,7 +337,7 @@ int main( )
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, referenceAreaAerodynamic,
-                boost::assign::list_of( angle_of_attack_dependent )( altitude_dependent ), true, true );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
 
     // Constant radiation pressure variables
     std::vector< std::string > occultingBodies;
@@ -507,6 +507,9 @@ int main( )
     std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > dependentVariablesResults;
 
+    // Add initial time and state
+    fullIntegrationResult[ simulationStartEpoch ] = translationalInitialState;
+
     // Create loop for each orbit and check condition for stopping aerobraking at the end
     std::vector< bool > vectorOfTerminationConditions;
     do
@@ -594,9 +597,14 @@ int main( )
         {
             fullIntegrationResult.erase( integratorSettings->initialTime_ );
             fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+            currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+            currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first);
         }
-        fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
-        fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        }
     }
     while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );
 

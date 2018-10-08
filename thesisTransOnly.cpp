@@ -96,7 +96,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 1000.0;//1.0 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -181,7 +181,7 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const bool useUnscentedKalmanFilter = true;
+    const bool useUnscentedKalmanFilter = false;
     const double simulationConstantStepSize = 0.1; // 10 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.01; // 100 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
@@ -192,6 +192,7 @@ int main( )
 
     // Save frequency
     const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+    std::cout << "saveFrequency: " << saveFrequency << std::endl;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
@@ -345,7 +346,7 @@ int main( )
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, referenceAreaAerodynamic,
-                boost::assign::list_of( angle_of_attack_dependent )( altitude_dependent ), true, true );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
 
     // Constant radiation pressure variables
     std::vector< std::string > occultingBodies;
@@ -521,6 +522,9 @@ int main( )
     std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > dependentVariablesResults;
 
+    // Add initial time and state
+    fullIntegrationResult[ simulationStartEpoch ] = translationalInitialState;
+
     // Create loop for each orbit and check condition for stopping aerobraking at the end
     std::vector< bool > vectorOfTerminationConditions;
     do
@@ -608,9 +612,14 @@ int main( )
         {
             fullIntegrationResult.erase( integratorSettings->initialTime_ );
             fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+            currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+            currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first);
         }
-        fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
-        fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        }
     }
     while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );
 
