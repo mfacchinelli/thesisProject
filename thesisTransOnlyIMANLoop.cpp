@@ -6,6 +6,10 @@
  *    under the terms of the Modified BSD license. You should have received
  *    a copy of the license with this file. If not, please or visit:
  *    http://tudat.tudelft.nl/LICENSE.
+ *
+ *    References:
+ *      Facchinelli, M. (2018). Aerobraking Navigation, Guidance and Control.
+ *          Master Thesis, Delft University of Technology.
  */
 
 #include <random>
@@ -31,7 +35,7 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
 
     // Strip filename from temporary string and return root-path string.
     std::string reducedPath = filePath_.substr( 0, filePath_.length( ) - std::string( "thesisTransOnlyIMANLoop.cpp" ).length( ) );
-    std::string outputPath = reducedPath + "SimulationOutputTransOnlyIMANLoopNew/";
+    std::string outputPath = reducedPath + "SimulationOutputTransOnlyIMANLoop/";
     if ( extraDirectory != "" )
     {
         outputPath += extraDirectory;
@@ -97,7 +101,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 4.5 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -133,10 +137,11 @@ int main( )
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
     std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-//    boost::make_shared< TabulatedAtmosphereSettings >(
-//                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
+    bodySettings[ "Mars" ]->atmosphereSettings =
+//            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
+//                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
+            boost::make_shared< TabulatedAtmosphereSettings >(
+                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
@@ -167,19 +172,19 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 25959.1674366749e3;//26021000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.864406332964218;//0.859882;
-    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 92.94201293531 );//93.0 );
-    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.747023768525 );//158.7 );
-    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.4614630865081 );//43.6 );
-    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.001215403088 );//180.0 );
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 25946932.3;//25959.1674366749e3;//
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.8651912;//0.864406332964218;//
+    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93 );//92.94201293531 );//
+    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );//158.747023768525 );//
+    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );//43.4614630865081 );//
+    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );//180.001215403088 );//
 
     // Define initial translational state
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements( initialStateInKeplerianElements,
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.1; // 10 Hz
+    const double simulationConstantStepSize = 0.05; // 10 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
     const double ratioOfOnboardOverSimulatedTimes = 1.0;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -187,23 +192,16 @@ int main( )
             simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
 
+    // Save frequency
+    const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Eigen::Vector6d estimatedInitialStateInKeplerianElements;
-    estimatedInitialStateInKeplerianElements( semiMajorAxisIndex ) = 25959.1691178499e3;
-    estimatedInitialStateInKeplerianElements( eccentricityIndex ) = 0.864406478821473;
-    estimatedInitialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 92.9414295342587 );
-    estimatedInitialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.746469263797 );
-    estimatedInitialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.4614817659748 );
-    estimatedInitialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.000129899914 );
-    const Eigen::Vector6d estimatedTranslationalInitialState = convertKeplerianToCartesianElements(
-                estimatedInitialStateInKeplerianElements, marsGravitationalParameter );
-
     // Initial conditions
     Eigen::Vector12d initialEstimatedStateVector = Eigen::Vector12d::Zero( );
-    initialEstimatedStateVector.segment( 0, 6 ) = estimatedTranslationalInitialState;
+    initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
     Eigen::Matrix12d initialEstimatedStateCovarianceMatrix = Eigen::Matrix12d::Identity( );
 
     // Define instrument accuracy
@@ -454,7 +452,7 @@ int main( )
 
                 // Create onboard computer object
                 boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
-                            controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
+                            controlSystem, guidanceSystem, navigationSystem, onboardInstruments, saveFrequency );
 
                 // Create integrator settings
                 boost::shared_ptr< IntegratorSettings< > > integratorSettings =
@@ -463,31 +461,8 @@ int main( )
                             1.0e-5, 5.0e1, 1.0e-15, 1.0e-15 );
 
                 // Define termination conditions
-                std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
-                terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch ) );
-                terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationStartEpoch +
-                                                                                                             2.0 * physical_constants::JULIAN_DAY ) );
                 boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
-                        boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
-
-                // Dependent variables
-                std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
-                dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
-                                                      total_acceleration_dependent_variable, "Satellite", "Mars" ) );
-                dependentVariablesList.push_back( boost::make_shared< SingleAccelerationDependentVariableSaveSettings >(
-                                                      aerodynamic, "Satellite", "Mars", false ) );
-                dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                                      "Satellite", reference_frames::angle_of_attack ) );
-                dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                                      "Satellite", reference_frames::angle_of_sideslip ) );
-                dependentVariablesList.push_back( boost::make_shared< BodyAerodynamicAngleVariableSaveSettings >(
-                                                      "Satellite", reference_frames::bank_angle ) );
-                dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
-                                                      local_density_dependent_variable, "Satellite", "Mars" ) );
-                dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
-                                                      local_dynamic_pressure_dependent_variable, "Satellite", "Mars" ) );
-                dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
-                                                      local_aerodynamic_heat_rate_dependent_variable, "Satellite", "Mars" ) );
+                        boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch );
 
                 // Create propagation settings for translational dynamics
                 boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
@@ -499,8 +474,7 @@ int main( )
                 std::vector< boost::shared_ptr< SingleArcPropagatorSettings< > > > propagatorSettingsList;
                 propagatorSettingsList.push_back( translationalPropagatorSettings );
                 boost::shared_ptr< PropagatorSettings< > > propagatorSettings = boost::make_shared< MultiTypePropagatorSettings< > >(
-                            propagatorSettingsList, terminationSettings,
-                            boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList, false ) );
+                            propagatorSettingsList, terminationSettings );
 
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
@@ -513,165 +487,105 @@ int main( )
                 // Update onboard models
                 onboardInstruments->updateInstruments( simulationStartEpoch );
 
-                // Pre-allocate variables
-                std::map< double, Eigen::VectorXd > fullIntegrationResult;
-                std::map< double, Eigen::VectorXd > fullDependentVariablesResults;
-                std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
-                std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
-                std::map< double, Eigen::VectorXd > dependentVariablesResults;
+                // Propagate until a termination condition is reached
+                dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
 
-                // Create loop for each orbit and check condition for stopping aerobraking at the end
-                std::vector< bool > vectorOfTerminationConditions;
+                // Retrieve elements from dynamics simulator
+                std::map< double, Eigen::VectorXd > fullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
+
+                // Create interpolators and simulate onboard orbit
+                boost::shared_ptr< OneDimensionalInterpolator< double, Eigen::VectorXd > > fullStateInterpolator =
+                        boost::make_shared< LagrangeInterpolator< double, Eigen::VectorXd, double > >( fullIntegrationResult, 8 );
+
+                // Inform user
+                std::cout << std::endl << "PROPAGATION TERMINATED. POST-PROCESSING RESULTS." << std::endl;
+
+                // Start time loop
+                unsigned int i = 0;
+                bool continuePostProcessing;
+                double currentTimeStep = onboardComputerRefreshStepSize;
+                double previousTimeStep = onboardComputerRefreshStepSize;
+                double currentTime = fullIntegrationResult.begin( )->first;
+                Eigen::VectorXd currentState;
+                std::map< double, Eigen::VectorXd > actualIntegrationResult;
                 do
                 {
-                    // Propagate until a termination condition is reached
-                    dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
-
-                    // Retrieve elements from dynamics simulator
-                    std::map< double, Eigen::VectorXd > currentIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
-                    std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
-
-                    // Check why propagation was interrupted
-                    if ( dynamicsSimulator->getPropagationTerminationReason( )->getPropagationTerminationReason( ) == termination_condition_reached )
+                    // Get current time step based on altitude
+                    if ( ( navigationSystem->getCurrentEstimatedTranslationalState( ).first.segment( 0, 3 ).norm( ) -
+                           navigationSystem->getRadius( ) ) < marsPropagationAtmosphericInterfaceAltitude )
                     {
-                        // Check which condition was met
-                        boost::shared_ptr< PropagationTerminationDetailsFromHybridCondition > hybridTerminationDetails =
-                                boost::dynamic_pointer_cast< PropagationTerminationDetailsFromHybridCondition >(
-                                    dynamicsSimulator->getPropagationTerminationReason( ) );
-                        vectorOfTerminationConditions = hybridTerminationDetails->getWasConditionMetWhenStopping( );
-
-                        // Create interpolators and simulate onboard orbit
-                        boost::shared_ptr< OneDimensionalInterpolator< double, Eigen::VectorXd > > fullStateInterpolator =
-                                boost::make_shared< LagrangeInterpolator< double, Eigen::VectorXd, double > >( currentIntegrationResult, 8 );
-                        boost::shared_ptr< OneDimensionalInterpolator< double, Eigen::VectorXd > > dependentVariablesInterpolator =
-                                boost::make_shared< LagrangeInterpolator< double, Eigen::VectorXd, double > >( currentDependentVariablesResults, 8 );
-
-                        // Inform user
-                        std::cout << std::endl << "PROPAGATION TERMINATED. POST-PROCESSING RESULTS." << std::endl;
-
-                        // Start time loop
-                        bool continuePostProcessing;
-                        double currentTimeStep = onboardComputerRefreshStepSize;
-                        double previousTimeStep = onboardComputerRefreshStepSize;
-                        double currentTime = currentIntegrationResult.begin( )->first;
-                        Eigen::VectorXd currentState;
-                        Eigen::VectorXd currentDependentVariables;
-                        std::map< double, Eigen::VectorXd > actualIntegrationResult;
-                        std::map< double, Eigen::VectorXd > actualDependentVariablesResults;
-                        do
-                        {
-                            // Get current time step based on altitude
-                            if ( ( navigationSystem->getCurrentEstimatedTranslationalState( ).first.segment( 0, 3 ).norm( ) -
-                                   navigationSystem->getRadius( ) ) < marsPropagationAtmosphericInterfaceAltitude )
-                            {
-                                currentTimeStep = onboardComputerRefreshStepSizeDuringAtmosphericPhase;
-                            }
-                            else
-                            {
-                                currentTimeStep = onboardComputerRefreshStepSize;
-                            }
-
-                            // Update time step in navigation system if necessary
-                            if ( currentTimeStep != previousTimeStep )
-                            {
-                                navigationSystem->resetNavigationRefreshStepSize( currentTimeStep );
-                            }
-
-                            // Update time
-                            currentTime += currentTimeStep;
-                            previousTimeStep = currentTimeStep;
-                            if ( ( ( currentTime - simulationStartEpoch ) / physical_constants::JULIAN_DAY > 1.4 ) )
-                            {
-                                vectorOfTerminationConditions.at( 0 ) = true;
-                                break;
-                            }
-
-                            // Interpolate at current time
-                            currentState = fullStateInterpolator->interpolate( currentTime );
-                            currentDependentVariables = dependentVariablesInterpolator->interpolate( currentTime );
-                            actualIntegrationResult[ currentTime ] = currentState;
-                            actualDependentVariablesResults[ currentTime ] = currentDependentVariables;
-
-                            // Update environment
-                            dynamicsSimulator->getDynamicsStateDerivative( )->computeStateDerivative( currentTime, currentState );
-
-                            // Check if stop condition is met
-                            continuePostProcessing = !onboardComputer->checkStopCondition( currentTime );
-                        }
-                        while ( continuePostProcessing );
-
-                        // Reset initial conditions
-                        integratorSettings->initialTime_ = currentTime;
-                        Eigen::VectorXd finalPropagatedState = currentState;
-
-                        // Add estimated apoapsis maneuver and reset state
-                        finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                        propagatorSettings->resetInitialStates( finalPropagatedState );
-
-                        // Overwrite propagation termination settings
-                        terminationSettingsList.at( 1 ) =
-                                boost::make_shared< PropagationTimeTerminationSettings >( currentTime + 2.0 * physical_constants::JULIAN_DAY );
-                        terminationSettings = boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
-                        boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >(
-                                    propagatorSettings )->resetTerminationSettings( terminationSettings );
-
-                        // Overwrite dynamics simulator
-                        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
-
-                        // Save results
-                        fullIntegrationResult.insert( actualIntegrationResult.begin( ), actualIntegrationResult.end( ) );
-                        fullDependentVariablesResults.insert( actualDependentVariablesResults.begin( ), actualDependentVariablesResults.end( ) );
+                        currentTimeStep = onboardComputerRefreshStepSizeDuringAtmosphericPhase;
                     }
                     else
                     {
-                        // Inform user on error and break propagation
-                        std::cerr << "Propagation was interrupted prematurely." << std::endl;
+                        currentTimeStep = onboardComputerRefreshStepSize;
+                    }
 
-                        // Save results
-                        fullIntegrationResult.insert( currentIntegrationResult.begin( ), currentIntegrationResult.end( ) );
-                        fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+                    // Update time step in navigation system if necessary
+                    if ( currentTimeStep != previousTimeStep )
+                    {
+                        navigationSystem->resetNavigationRefreshStepSize( currentTimeStep );
+                    }
+
+                    // Update time
+                    currentTime += currentTimeStep;
+                    previousTimeStep = currentTimeStep;
+                    if ( ( ( currentTime - simulationStartEpoch ) / physical_constants::JULIAN_DAY > 1.4 ) )
+                    {
                         break;
                     }
+
+                    // Interpolate at current time
+                    currentState = fullStateInterpolator->interpolate( currentTime );
+                    i = i % saveFrequency;
+                    if ( i == 0 )
+                    {
+                        actualIntegrationResult[ currentTime ] = currentState;
+                    }
+                    i++;
+
+                    // Update environment
+                    dynamicsSimulator->getDynamicsStateDerivative( )->computeStateDerivative( currentTime, currentState );
+
+                    // Check if stop condition is met
+                    continuePostProcessing = !onboardComputer->checkStopCondition( currentTime );
                 }
-                while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 0 ) ) );
+                while ( continuePostProcessing );
+
+                // Reset initial conditions
+                integratorSettings->initialTime_ = currentTime;
+                Eigen::VectorXd finalPropagatedState = currentState;
 
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                // Save frequency and output path
-                unsigned int saveFrequency = 2 * static_cast< unsigned int >( onboardComputerRefreshRate );
+                // Output path
                 std::string outputPath = getOutputPath( std::to_string( p ) + "-" + std::to_string( v ) + "-" + std::to_string( m ) );
 
                 // Compute map of Kepler elements
-                unsigned int i = 0;
                 Eigen::VectorXd currentFullState;
                 Eigen::Vector6d currentCartesianState;
-                for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullIntegrationResult.begin( );
-                      stateIterator != fullIntegrationResult.end( ); stateIterator++, i++ )
+                std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
+                std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
+                for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = actualIntegrationResult.begin( );
+                      stateIterator != actualIntegrationResult.end( ); stateIterator++ )
                 {
-                    if ( ( i % saveFrequency ) == 0 )
-                    {
-                        // Get current states
-                        currentFullState = stateIterator->second;
-                        currentCartesianState = currentFullState.segment( 0, 6 );
+                    // Get current states
+                    currentFullState = stateIterator->second;
+                    currentCartesianState = currentFullState.segment( 0, 6 );
 
-                        // Store translational and rotational states
-                        cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
+                    // Store translational and rotational states
+                    cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
 
-                        // Compute current Keplerian state
-                        keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
-                                    currentCartesianState, marsGravitationalParameter );
-
-                        // Store dependent variables
-                        dependentVariablesResults[ stateIterator->first ] = fullDependentVariablesResults[ stateIterator->first ];
-                    }
+                    // Compute current Keplerian state
+                    keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
+                                currentCartesianState, marsGravitationalParameter );
                 }
 
                 // Write propagation history to files
                 writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "cartesianPropagated.dat", outputPath );
                 writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "keplerianPropagated.dat", outputPath );
-                writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", outputPath );
 
                 // Get estimated states
                 std::map< double, std::pair< Eigen::Vector6d, Eigen::Vector6d > > fullEstimationResult =
@@ -680,126 +594,26 @@ int main( )
                 std::map< double, Eigen::Vector6d > keplerianTranslationalEstimationResult;
 
                 // Extract map of translational and rotational results
-                i = 0;
                 for ( std::map< double, std::pair< Eigen::Vector6d, Eigen::Vector6d > >::const_iterator
-                      stateIterator = fullEstimationResult.begin( ); stateIterator != fullEstimationResult.end( ); stateIterator++, i++ )
+                      stateIterator = fullEstimationResult.begin( ); stateIterator != fullEstimationResult.end( ); stateIterator++ )
                 {
-                    if ( ( i % static_cast< unsigned int >( saveFrequency / ratioOfOnboardOverSimulatedTimes ) ) == 0 )
-                    {
-                        cartesianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.first;
-                        keplerianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.second;
-                    }
+                    cartesianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.first;
+                    keplerianTranslationalEstimationResult[ stateIterator->first ] = stateIterator->second.second;
+                }
+
+                // Check that very last estimate is present
+                double finalTime = cartesianTranslationalIntegrationResult.rbegin( )->first;
+                if ( cartesianTranslationalEstimationResult.count( finalTime ) == 0 )
+                {
+                    std::pair< Eigen::Vector6d, Eigen::Vector6d > finalEstimatedTranslationalState =
+                            navigationSystem->getCurrentEstimatedTranslationalState( );
+                    cartesianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.first;
+                    keplerianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.second;
                 }
 
                 // Write estimated satellite state hisotry to files
                 writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", outputPath );
                 writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
-
-                // Filter results
-                bool extractFilterResults = false;
-                Eigen::Vector6d estimatedAccelerometerErrors;
-                if ( extractFilterResults )
-                {
-                    // Get estimated states from filter
-                    std::map< double, Eigen::VectorXd > fullFilterStateEstimates =
-                            navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( );
-                    std::map< double, Eigen::MatrixXd > fullFilterCovarianceEstimates =
-                            navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( );
-
-                    // Extract states and covariances from filter
-                    i = 0;
-                    std::map< double, Eigen::VectorXd > filterStateEstimates;
-                    std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
-                    std::vector< std::vector< double > > currentVariableHistory;
-                    currentVariableHistory.resize( 6 );
-                    for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullFilterStateEstimates.begin( );
-                          stateIterator != fullFilterStateEstimates.end( ); stateIterator++, i++ )
-                    {
-                        if ( ( i % saveFrequency ) == 0 )
-                        {
-                            filterStateEstimates[ stateIterator->first ] = stateIterator->second;
-                            filterCovarianceEstimates[ stateIterator->first ] =
-                                    Eigen::VectorXd( fullFilterCovarianceEstimates[ stateIterator->first ].diagonal( ) );
-                        }
-                        for ( unsigned int i = 0; i < 6; i++ )
-                        {
-                            currentVariableHistory.at( i ).push_back( stateIterator->second[ i + 6 ] );
-                        }
-                    }
-
-                    // Extract median of accelerometer errors
-                    for ( unsigned int i = 0; i < estimatedAccelerometerErrors.rows( ); i++ )
-                    {
-                        estimatedAccelerometerErrors[ i ] = statistics::computeSampleMedian( currentVariableHistory.at( i ) );
-                    }
-
-                    // Write estimated states directly from navigation filter
-                    writeDataMapToTextFile( filterStateEstimates, "filterStateEstimates.dat", outputPath );
-                    writeDataMapToTextFile( filterCovarianceEstimates, "filterCovarianceEstimates.dat", outputPath );
-                }
-                else
-                {
-                    // Get estimated accelerometer errors
-                    estimatedAccelerometerErrors = navigationSystem->getEstimatedAccelerometerErrors( );
-                }
-                std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
-
-                // Measurements
-                bool extractMeasurementResults = false;
-                if ( extractMeasurementResults )
-                {
-                    // Get instrument measurements and correct them
-                    i = 0;
-                    std::map< double, Eigen::Vector6d > fullInertialMeasurementUnitMeasurements =
-                            onboardInstruments->getCurrentOrbitHistoryOfInertialMeasurmentUnitMeasurements( );
-                    std::map< double, Eigen::Vector3d > fullOnboardExpectedMeasurements =
-                            navigationSystem->getCurrentOrbitHistoryOfEstimatedNonGravitationalTranslationalAccelerations( );
-                    std::map< double, Eigen::Vector3d > accelerometerMeasurements;
-                    std::map< double, Eigen::Vector3d > onboardExpectedMeasurements;
-                    for ( std::map< double, Eigen::Vector6d >::const_iterator
-                          measurementIterator = fullInertialMeasurementUnitMeasurements.begin( );
-                          measurementIterator != fullInertialMeasurementUnitMeasurements.end( ); measurementIterator++, i++ )
-                    {
-                        if ( ( i % saveFrequency ) == 0 )
-                        {
-                            accelerometerMeasurements[ measurementIterator->first ] =
-                                    removeErrorsFromInertialMeasurementUnitMeasurement( measurementIterator->second.segment( 0, 3 ),
-                                                                                        estimatedAccelerometerErrors );
-                            onboardExpectedMeasurements[ measurementIterator->first ] =
-                                    fullOnboardExpectedMeasurements[ measurementIterator->first ];
-                        }
-                    }
-
-                    // Write other data to file
-                    writeDataMapToTextFile( accelerometerMeasurements, "accelerometerMeasurements.dat", outputPath );
-                    writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
-                }
-
-                // Extract atmosphere data
-                bool extractAtmosphericData = false;
-                if ( extractAtmosphericData )
-                {
-                    std::map< unsigned int, Eigen::VectorXd > atmosphericParameters = navigationSystem->getHistoryOfEstimatedAtmosphereParameters( );
-                    writeDataMapToTextFile( atmosphericParameters, "atmosphericParameters.dat", outputPath );
-                }
-
-                // Extract maneuver information
-                bool extractManeuverInformation = false;
-                if ( extractManeuverInformation )
-                {
-                    std::map< unsigned int, std::pair< double, double > > pairOfPeriapsisCorridorBoundaries =
-                            guidanceSystem->getHistoryOfEstimatedPeriapsisCorridorBoundaries( );
-                    std::map< unsigned int, Eigen::Vector2d > periapsisCorridorBoundaries;
-                    for ( std::map< unsigned int, std::pair< double, double > >::const_iterator mapIterator = pairOfPeriapsisCorridorBoundaries.begin( );
-                          mapIterator != pairOfPeriapsisCorridorBoundaries.end( ); mapIterator++ )
-                    {
-                        periapsisCorridorBoundaries[ mapIterator->first ] =
-                                ( Eigen::VectorXd( 2 ) << mapIterator->second.first, mapIterator->second.second ).finished( );
-                    }
-                    std::map< unsigned int, double > apoaspsisManeuverMagnitudes = guidanceSystem->getHistoryOfApoapsisManeuverMagnitudes( ).second;
-                    writeDataMapToTextFile( periapsisCorridorBoundaries, "periapsisCorridors.dat", outputPath );
-                    writeDataMapToTextFile( apoaspsisManeuverMagnitudes, "apoapsisManeuver.dat", outputPath );
-                }
             }
         }
     }

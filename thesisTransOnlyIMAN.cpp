@@ -6,6 +6,10 @@
  *    under the terms of the Modified BSD license. You should have received
  *    a copy of the license with this file. If not, please or visit:
  *    http://tudat.tudelft.nl/LICENSE.
+ *
+ *    References:
+ *      Facchinelli, M. (2018). Aerobraking Navigation, Guidance and Control.
+ *          Master Thesis, Delft University of Technology.
  */
 
 #include <random>
@@ -87,6 +91,17 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
+    // Initial conditions settings:
+    //      0 -> high eccentricity
+    //      1 -> low eccentricity
+    const unsigned int initialConditions = 1;
+
+    // Save settings:
+    bool extractFilterResults = false;
+    bool extractMeasurementResults = false;
+    bool extractAtmosphericData = false;
+    bool extractManeuverInformation = false;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +111,16 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 0.1125 * physical_constants::JULIAN_DAY;
+    double simulationEndEpoch = simulationStartEpoch;
+    switch ( initialConditions )
+    {
+    case 0:
+        simulationEndEpoch += 1.4 * physical_constants::JULIAN_DAY;
+        break;
+    case 1:
+        simulationEndEpoch += 0.1125 * physical_constants::JULIAN_DAY;
+        break;
+    }
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -137,6 +161,7 @@ int main( )
                 three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
 //            boost::make_shared< TabulatedAtmosphereSettings >(
 //                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
+    std::cerr << "Full atmosphere is OFF." << std::endl;
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
@@ -167,8 +192,21 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 4708500.0;//26021000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.252203;//0.859882;
+    switch ( initialConditions )
+    {
+    case 0:
+    {
+        initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
+        initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+        break;
+    }
+    case 1:
+    {
+        initialStateInKeplerianElements( semiMajorAxisIndex ) = 4708500.0;
+        initialStateInKeplerianElements( eccentricityIndex ) = 0.252203;
+        break;
+    }
+    }
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -179,7 +217,7 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.1; // 10 Hz
+    const double simulationConstantStepSize = 0.05; // 10 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -366,7 +404,7 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-    std::cerr << "Full Mars gravity is OFF." << std::endl;
+//    std::cerr << "Full Mars gravity is OFF." << std::endl;
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
@@ -612,8 +650,17 @@ int main( )
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Save frequency and output path
-    std::string outputPath = getOutputPath( "low_ecc" );
+    // Output path
+    std::string outputPath;
+    switch ( initialConditions )
+    {
+    case 0:
+        outputPath = getOutputPath( "high_ecc" );
+        break;
+    case 1:
+        outputPath = getOutputPath( "low_ecc" );
+        break;
+    }
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
@@ -670,7 +717,6 @@ int main( )
     writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
 
     // Filter results
-    bool extractFilterResults = true;
     if ( extractFilterResults )
     {
         // Get estimated states from filter
@@ -704,7 +750,6 @@ int main( )
     std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
 
     // Measurements
-    bool extractMeasurementResults = false;
     if ( extractMeasurementResults )
     {
         // Get instrument measurements and correct them
@@ -735,7 +780,6 @@ int main( )
     }
 
     // Extract atmosphere data
-    bool extractAtmosphericData = true;
     if ( extractAtmosphericData )
     {
         std::map< unsigned int, Eigen::VectorXd > atmosphericParameters = navigationSystem->getHistoryOfEstimatedAtmosphereParameters( );
@@ -743,7 +787,6 @@ int main( )
     }
 
     // Extract maneuver information
-    bool extractManeuverInformation = true;
     if ( extractManeuverInformation )
     {
         std::map< unsigned int, std::pair< double, double > > pairOfPeriapsisCorridorBoundaries =

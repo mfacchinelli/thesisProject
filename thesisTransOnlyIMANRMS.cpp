@@ -6,6 +6,10 @@
  *    under the terms of the Modified BSD license. You should have received
  *    a copy of the license with this file. If not, please or visit:
  *    http://tudat.tudelft.nl/LICENSE.
+ *
+ *    References:
+ *      Facchinelli, M. (2018). Aerobraking Navigation, Guidance and Control.
+ *          Master Thesis, Delft University of Technology.
  */
 
 #include <random>
@@ -87,6 +91,9 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
+    // Save settings
+    bool extractFilterResults = true;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            SETTINGS LOOP                 //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +102,7 @@ int main( )
     //      0 -> high eccentricity
     //      1 -> low eccentricity
     const unsigned int initialConditions = 1;
+    const bool useUnscentedKalmanFilter = false;
 
     // Onboard comptuer frequencies
     std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes;
@@ -109,14 +117,19 @@ int main( )
     }
 
     // Environment settings:
-    //      0 -> (0,0) + red + exp
-    //      1 -> (0,0) + red + [ ONB: exp & SIM: tab ]
-    //      2 -> (0,0) + [ ONB: red & SIM: full ] + exp
-    //      3 -> (0,0) + [ ONB: red & SIM: full ] + [ ONB: exp & SIM: tab ]
-    //      4 -> [ ONB: (4,4) & SIM: (21,21) ] + red + exp
-    //      5 -> [ ONB: (4,4) & SIM: (21,21) ] + red + [ ONB: exp & SIM: tab ]
-    //      6 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + exp
-    //      7 -> [ ONB: (4,4) & SIM: (21,21) ] + [ ONB: red & SIM: full ] + [ ONB: exp & SIM: tab ]
+    //   Case -> Gravity + Atmosphere + Aerodynamics
+    //      0 -> (0,0) + exp + red
+    //      1 -> (0,0) + exp + [ SIM: full & ONB: red ]
+    //      2 -> (0,0) + [ SIM: tab & ONB: exp ] + red
+    //      3 -> (0,0) + [ SIM: tab & ONB: exp ] + [ SIM: full & ONB: red ]
+    //      4 -> [ SIM: (21,21) & ONB: (4,4) ] + exp + red
+    //      5 -> [ SIM: (21,21) & ONB: (4,4) ] + exp + [ SIM: full & ONB: red ]
+    //      6 -> [ SIM: (21,21) & ONB: (4,4) ] + [ SIM: tab & ONB: exp ] + red
+    //      7 -> [ SIM: (21,21) & ONB: (4,4) ] + [ SIM: tab & ONB: exp ] + [ SIM: full & ONB: red ]
+    // Legend:
+    //      exp - exponential
+    //      red - reduced
+    //      tab - tabulated
     for ( unsigned int simulation = 0; simulation < 8; simulation++ )
     {
         for ( unsigned int ratioOfOnboardOverSimulatedTimes : vectorOfRatiosOfOnboardOverSimulatedTimes )
@@ -162,9 +175,9 @@ int main( )
             switch ( simulation )
             {
             case 0:
-            case 2:
+            case 1:
             case 4:
-            case 6:
+            case 5:
             {
                 // Exponential atmosphere settings
                 std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
@@ -172,9 +185,9 @@ int main( )
                             three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
                 break;
             }
-            case 1:
+            case 2:
             case 3:
-            case 5:
+            case 6:
             case 7:
             {
                 // Tabulated atmosphere parameters
@@ -232,12 +245,12 @@ int main( )
             switch ( initialConditions )
             {
             case 0:
-                initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
-                initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+                initialStateInKeplerianElements( semiMajorAxisIndex ) = 25946932.3;
+                initialStateInKeplerianElements( eccentricityIndex ) = 0.8651912;
                 break;
             case 1:
-                initialStateInKeplerianElements( semiMajorAxisIndex ) = 4708500.0;
-                initialStateInKeplerianElements( eccentricityIndex ) = 0.252203;
+                initialStateInKeplerianElements( semiMajorAxisIndex ) = 4699198.5;
+                initialStateInKeplerianElements( eccentricityIndex ) = 0.2546816;
                 break;
             }
             initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
@@ -250,7 +263,6 @@ int main( )
                                                                                                    marsGravitationalParameter );
 
             // Simulation times
-            const bool useUnscentedKalmanFilter = false;
             const double simulationConstantStepSize = 0.005; // 200 Hz
             const double simulationConstantStepSizeDuringAtmosphericPhase = 0.0005; // 2000 Hz
             const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
@@ -435,18 +447,18 @@ int main( )
             switch ( simulation )
             {
             case 0:
-            case 1:
+            case 2:
             case 4:
-            case 5:
+            case 6:
             {
                 // Create aerodynamic coefficient settings
                 aerodynamicCoefficientSettings = boost::make_shared< ConstantAerodynamicCoefficientSettings >(
                             referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true );
                 break;
             }
-            case 2:
+            case 1:
             case 3:
-            case 6:
+            case 5:
             case 7:
             {
                 // Aerodynamic coefficients from file
@@ -805,7 +817,6 @@ int main( )
             writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
 
             // Filter results
-            bool extractFilterResults = true;
             if ( extractFilterResults )
             {
                 // Get estimated states from filter

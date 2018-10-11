@@ -6,6 +6,10 @@
  *    under the terms of the Modified BSD license. You should have received
  *    a copy of the license with this file. If not, please or visit:
  *    http://tudat.tudelft.nl/LICENSE.
+ *
+ *    References:
+ *      Facchinelli, M. (2018). Aerobraking Navigation, Guidance and Control.
+ *          Master Thesis, Delft University of Technology.
  */
 
 #include <random>
@@ -87,6 +91,7 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
+    // Save settings
     bool extractFilterResults = true;
     bool extractMeasurementResults = false;
     bool extractAtmosphericData = true;
@@ -101,7 +106,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -146,8 +151,8 @@ int main( )
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
-    std::cerr << "Sun gravity is OFF." << std::endl;
-    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
+//    std::cerr << "Sun gravity is OFF." << std::endl;
+//    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
 
     // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
