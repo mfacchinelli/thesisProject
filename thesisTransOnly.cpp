@@ -106,7 +106,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -202,7 +202,7 @@ int main( )
     const double onboardComputerRefreshRateDuringAtmosphericPhase = 1.0 / onboardComputerRefreshStepSizeDuringAtmosphericPhase; // Hertz
 
     // Save frequency
-    const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+    const unsigned int saveFrequency = std::max< unsigned int >( 5 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
@@ -651,30 +651,33 @@ int main( )
     }
     while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );
 
-//    // Propagate for one final orbit, to check orbit configuration
-//    terminationSettings = boost::make_shared< PropagationTimeTerminationSettings >(
-//                integratorSettings->initialTime_ + physical_constants::JULIAN_DAY );
-//    boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >( propagatorSettings )->resetTerminationSettings( terminationSettings );
-//    dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
-//    dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
+    // Propagate for one final orbit, to check orbit configuration
+    if ( ( simulationEndEpoch - simulationStartEpoch ) > 50.0 )
+    {
+        terminationSettings = boost::make_shared< PropagationTimeTerminationSettings >(
+                    integratorSettings->initialTime_ + physical_constants::JULIAN_DAY );
+        boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >( propagatorSettings )->resetTerminationSettings( terminationSettings );
+        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
+        dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
 
-//    // Retrieve elements from dynamics simulator
-//    std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
-//    std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
+        // Retrieve elements from dynamics simulator
+        std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
+        std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
 
-//    // Save results
-//    if ( !fullIntegrationResult.empty( ) )
-//    {
-//        fullIntegrationResult.erase( integratorSettings->initialTime_ );
-//        fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
-//        currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
-//        currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first );
-//    }
-//    if ( !fullIntegrationResult.empty( ) )
-//    {
-//        fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
-//        fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
-//    }
+        // Save results
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.erase( integratorSettings->initialTime_ );
+            fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+            currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+            currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first );
+        }
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
@@ -724,13 +727,16 @@ int main( )
     }
 
     // Check that very last estimate is present
-    double finalTime = cartesianTranslationalIntegrationResult.rbegin( )->first;
-    if ( cartesianTranslationalEstimationResult.count( finalTime ) == 0 )
+    if ( ( simulationEndEpoch - simulationStartEpoch ) < 50.0 )
     {
-        std::pair< Eigen::Vector6d, Eigen::Vector6d > finalEstimatedTranslationalState =
-                navigationSystem->getCurrentEstimatedTranslationalState( );
-        cartesianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.first;
-        keplerianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.second;
+        double finalTime = cartesianTranslationalIntegrationResult.rbegin( )->first;
+        if ( cartesianTranslationalEstimationResult.count( finalTime ) == 0 )
+        {
+            std::pair< Eigen::Vector6d, Eigen::Vector6d > finalEstimatedTranslationalState =
+                    navigationSystem->getCurrentEstimatedTranslationalState( );
+            cartesianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.first;
+            keplerianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.second;
+        }
     }
 
     // Write estimated satellite state hisotry to files
