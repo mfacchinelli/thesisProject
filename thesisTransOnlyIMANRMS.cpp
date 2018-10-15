@@ -752,21 +752,25 @@ int main( )
             }
 
             // Compute map of Kepler elements
+            unsigned int i = 0;
             Eigen::VectorXd currentFullState;
             Eigen::Vector6d currentCartesianState;
             for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullIntegrationResult.begin( );
-                  stateIterator != fullIntegrationResult.end( ); stateIterator++ )
+                  stateIterator != fullIntegrationResult.end( ); stateIterator++, i++ )
             {
-                // Get current states
-                currentFullState = stateIterator->second;
-                currentCartesianState = currentFullState.segment( 0, 6 );
+                if ( ( i % 10 ) == 0 )
+                {
+                    // Get current states
+                    currentFullState = stateIterator->second;
+                    currentCartesianState = currentFullState.segment( 0, 6 );
 
-                // Store translational and rotational states
-                cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
+                    // Store translational and rotational states
+                    cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
 
-                // Compute current Keplerian state
-                keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
-                            currentCartesianState, marsGravitationalParameter );
+                    // Compute current Keplerian state
+                    keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
+                                currentCartesianState, marsGravitationalParameter );
+                }
             }
 
             // Write propagation history to files
@@ -808,7 +812,7 @@ int main( )
                     navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( );
 
             // Extract states and covariances from filter
-            unsigned int i = 0;
+            i = 0;
             std::map< double, Eigen::VectorXd > filterStateEstimates;
             std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
             saveFrequency = std::max< unsigned int >( static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
