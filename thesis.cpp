@@ -6,6 +6,10 @@
  *    under the terms of the Modified BSD license. You should have received
  *    a copy of the license with this file. If not, please or visit:
  *    http://tudat.tudelft.nl/LICENSE.
+ *
+ *    References:
+ *      Facchinelli, M. (2018). Aerobraking Navigation, Guidance and Control.
+ *          Master Thesis, Delft University of Technology.
  */
 
 #include <random>
@@ -16,11 +20,10 @@
 #include "Tudat/Mathematics/Filters/createFilter.h"
 #include "Tudat/Astrodynamics/Propagators/rotationalMotionQuaternionsStateDerivative.h"
 
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/controlSystem.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/guidanceSystem.h"
-#include "Tudat/Astrodynamics/GuidanceNavigationControl/navigationSystem.h"
-
-#include "Tudat/Astrodynamics/SystemModels/navigationInstrumentsModel.h"
+#include "Tudat/Astrodynamics/SystemModels/controlSystem.h"
+#include "Tudat/Astrodynamics/SystemModels/guidanceSystem.h"
+#include "Tudat/Astrodynamics/SystemModels/instrumentsModel.h"
+#include "Tudat/Astrodynamics/SystemModels/navigationSystem.h"
 #include "Tudat/Astrodynamics/SystemModels/onboardComputerModel.h"
 
 //! Get path for output directory.
@@ -46,13 +49,6 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
-//! Function to compute the altimeter error as a function of altitude.
-double altimeterErrorAsAFunctionOfAltitude( const double currentPseudoAltitudeMeasurement )
-{
-    TUDAT_UNUSED_PARAMETER( currentPseudoAltitudeMeasurement );
-    return 1.0e-3;//0.001 * currentPseudoAltitudeMeasurement;
-}
-
 //! Main code.
 int main( )
 {
@@ -68,7 +64,6 @@ int main( )
     using namespace tudat::estimatable_parameters;
     using namespace tudat::filters;
     using namespace tudat::gravitation;
-    using namespace tudat::guidance_navigation_control;
     using namespace tudat::input_output;
     using namespace tudat::numerical_integrators;
     using namespace tudat::orbital_element_conversions;
@@ -76,6 +71,12 @@ int main( )
     using namespace tudat::simulation_setup;
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
+
+    // Save settings
+    bool extractFilterResults = true;
+    bool extractMeasurementResults = false;
+    bool extractAtmosphericData = true;
+    bool extractManeuverInformation = true;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -85,14 +86,13 @@ int main( )
     spice_interface::loadStandardSpiceKernels( );
 
     // Set simulation time settings
-    const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR +
-            30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = //600.0 + simulationStartEpoch;
-            1.4 * physical_constants::JULIAN_DAY + simulationStartEpoch;
+    const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
     bodiesToCreate.push_back( "Sun" );
+    bodiesToCreate.push_back( "Earth" );
     bodiesToCreate.push_back( "Mars" );
 
     // Tabulated atmosphere settings
@@ -102,15 +102,15 @@ int main( )
     tabulatedAtmosphereFiles[ 2 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/temperature.dat";
     tabulatedAtmosphereFiles[ 3 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/gasConstant.dat";
     tabulatedAtmosphereFiles[ 4 ] = getAtmosphereTablesPath( ) + "MCDMeanAtmosphereTimeAverage/specificHeatRatio.dat";
+    std::vector< AtmosphereIndependentVariables > atmosphereIndependentVariables = {
+        longitude_dependent_atmosphere, latitude_dependent_atmosphere, altitude_dependent_atmosphere };
     std::vector< AtmosphereDependentVariables > atmosphereDependentVariables = {
         density_dependent_atmosphere, pressure_dependent_atmosphere, temperature_dependent_atmosphere,
         gas_constant_dependent_atmosphere, specific_heat_ratio_dependent_atmosphere };
-    std::vector< AtmosphereIndependentVariables > atmosphereIndependentVariables = {
-        longitude_dependent_atmosphere, latitude_dependent_atmosphere, altitude_dependent_atmosphere };
     std::vector< interpolators::BoundaryInterpolationType > boundaryConditions =
             std::vector< interpolators::BoundaryInterpolationType >( 3, interpolators::use_boundary_value );
 
-    // Create body objects
+    // Create body settings and give default values
     std::map< std::string, boost::shared_ptr< BodySettings > > bodySettings =
             getDefaultBodySettings( bodiesToCreate, simulationStartEpoch - 300.0, simulationEndEpoch + 300.0 );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
@@ -118,14 +118,30 @@ int main( )
         bodySettings[ bodiesToCreate.at( i ) ]->ephemerisSettings->resetFrameOrientation( "J2000" );
         bodySettings[ bodiesToCreate.at( i ) ]->rotationModelSettings->resetOriginalFrame( "J2000" );
     }
+
+    // Give Mars a more detailed environment
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
-    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< TabulatedAtmosphereSettings >(
+
+    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+    bodySettings[ "Mars" ]->atmosphereSettings =
+            //            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
+            //                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
+            boost::make_shared< TabulatedAtmosphereSettings >(
                 tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
+    //    std::cerr << "Full atmosphere is OFF." << std::endl;
+
+    // Give Earth zero gravity field such that ephemeris is created, but no acceleration
+    bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
+    //    std::cerr << "Sun gravity is OFF." << std::endl;
+    //    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
+
+    // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
 
     // Define simulation objects
     std::vector< std::string > bodiesToPropagate;
     bodiesToPropagate.push_back( "Satellite" );
+
     std::vector< std::string > centralBodies;
     centralBodies.push_back( "Mars" );
 
@@ -135,14 +151,17 @@ int main( )
 
     // Get and set Mars physical parameters
     const double marsGravitationalParameter = bodyMap.at( "Mars" )->getGravityFieldModel( )->getGravitationalParameter( );
-    const double marsAtmosphericInterfaceAltitude = 250.0e3;
-    const double marsReducedAtmosphericInterfaceAltitude = 175.0e3;
+    const double marsPropagationAtmosphericInterfaceAltitude = 1000.0e3;
+    const double marsAtmosphericInterfaceAltitude = 200.0e3;
+    const double marsReducedAtmosphericInterfaceAltitude = 150.0e3;
+    const double periapseEstimatorConstant = 0.955;
+    const unsigned int frequencyOfDeepSpaceNetworkTracking = -1;
     const unsigned int numberOfRequiredAtmosphereSamplesForInitiation = 7;
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 25956000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.864540;
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;//4708500.0;//
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;//0.252203;//
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -175,63 +194,76 @@ int main( )
     rotationalInitialState.segment( 0, 4 ) = initialQuaternion;
 
     // Simulation times
-    double simulationConstantStepSize = 0.5;
-    double onboardComputerRefreshStepSize = simulationConstantStepSize; // seconds
-    double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
+    const bool useUnscentedKalmanFilter = true;
+    const double simulationConstantStepSize = 0.2; // 5 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.02; // 50 Hz
+    const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
+    const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
+    const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
+            simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
+    const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
+    const double onboardComputerRefreshRateDuringAtmosphericPhase = 1.0 / onboardComputerRefreshStepSizeDuringAtmosphericPhase; // Hertz
+
+    // Save frequency
+    const unsigned int saveFrequency = std::max< unsigned int >( 5 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
-    Eigen::Vector22d initialEstimatedStateVector = Eigen::Vector22d::Zero( ); // assume zero errors in IMU
+    Eigen::Vector16d initialEstimatedStateVector = Eigen::Vector16d::Zero( ); // assume zero errors in IMU
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
     initialEstimatedStateVector.segment( 6, 4 ) = rotationalInitialState.segment( 0, 4 ); // assume perfect initial knowledge
-    Eigen::Matrix22d initialEstimatedStateCovarianceMatrix = Eigen::Matrix22d::Identity( );
+    Eigen::Matrix16d initialEstimatedStateCovarianceMatrix = Eigen::Matrix16d::Identity( );
 
-    // Altimeter specifications
-    Eigen::Vector3d altimeterBodyFixedPointingDirection = -Eigen::Vector3d::UnitZ( );
-    std::pair< double, double > altimeterAltitudeRange = std::make_pair( 0.0, 5e6 );
+    // Define instrument accuracy
+    const double accelerometerBiasStandardDeviation = 1.0e-4;
+    const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
+    const double gyroscopeBiasStandardDeviation = 5.0e-9;
+    const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
+    const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
+    const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
+    const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
 
-    // Deifine instrument accuracy
-    double accelerometerBiasStandardDeviation = 1e-4;
-    double accelerometerScaleFactorStandardDeviation = 1e-4;
-    double gyroscopeBiasStandardDeviation = 5.0e-9;
-    double gyroscopeScaleFactorStandardDeviation = 1e-4;
-    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
-    Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
-    Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
-    double altimeterAccuracy = 1.0e2;
-    boost::function< double( double ) > altimeterAccuracyFunction = boost::bind( &altimeterErrorAsAFunctionOfAltitude, _1 );
+    const Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+    const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+
+    // Define Deep Space Network accuracy
+    const double deepSpaceNetworkPositionAccuracy = 10.0;
+    const double deepSpaceNetworkVelocityAccuracy = 0.01;
+    const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
+
+    // Define generic ranging system accuracy
+    const Eigen::Vector3d positionAccuracy = Eigen::Vector3d::Constant( 5.0e2 );
 
     // System and measurment uncertainties
-    double positionStandardDeviation = 100.0;
-    double translationalVelocityStandardDeviation = 1.0e-1;
-    double attitudeStandardDeviation = 1.0e-4;
-    Eigen::Vector22d diagonalOfSystemUncertainty;
+    const double positionStandardDeviation = 1.0e2;
+    const double translationalVelocityStandardDeviation = 1.0e-1;
+    const double attitudeStandardDeviation = 1.0e-4;
+    Eigen::Vector16d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
-            Eigen::Vector4d::Constant( std::pow( attitudeStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( accelerometerScaleFactorStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( gyroscopeScaleFactorStandardDeviation, 2 ) );
-    Eigen::Matrix22d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+            Eigen::Vector4d::Constant( std::pow( attitudeStandardDeviation, 2 ) ),
+            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) );
+    Eigen::Matrix16d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Vector5d diagonalOfMeasurementUncertainty;
-    diagonalOfMeasurementUncertainty << altimeterAccuracy, Eigen::Vector4d::Constant( 1e-6 ); // starTrackerAccuracy <<<<----
-    Eigen::Matrix5d measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
+    Eigen::Vector7d diagonalOfMeasurementUncertainty;
+    diagonalOfMeasurementUncertainty.segment( 0, 3 ) = 10.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) ).asDiagonal( );
+    diagonalOfMeasurementUncertainty.segment( 3, 4 ) = Eigen::Vector4d::Constant( 1e-6 ); // starTrackerAccuracy <<<<----
+    Eigen::Matrix7d measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
-    onboardAerodynamicCoefficients[ 0 ] = 1.87; // drag coefficient at 0 deg and 125 km
-    onboardAerodynamicCoefficients[ 2 ] = 0.013; // lift coefficient at 0 deg and 125 km
+    onboardAerodynamicCoefficients[ 0 ] = 1.9;
 
     // Controller gains
-    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 0.0 );
-//    proportionalGain << 1.0e-3, 5.0e-3, 1.0e-3;
-    Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );//1.0e-4 );
-    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );//1.0e-1 );
+    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Zero( );
+    Eigen::Vector3d integralGain = Eigen::Vector3d::Zero( );
+    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Zero( );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
@@ -254,14 +286,14 @@ int main( )
             getDefaultBodySettings( { "Mars" }, simulationStartEpoch - 300.0, simulationEndEpoch + 300.0 );
     onboardBodySettings[ "Mars" ]->ephemerisSettings->resetFrameOrientation( "J2000" );
     onboardBodySettings[ "Mars" ]->rotationModelSettings->resetOriginalFrame( "J2000" );
-    onboardBodySettings[ "Mars" ]->gravityFieldSettings =
-            boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
-    NamedBodyMap onboardBodyMap = createBodies( onboardBodySettings );
+    onboardBodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
-    std::vector< double > vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0 };//, -1.0, 0.0, 0.0 };
-    onboardBodyMap[ "Mars" ]->setAtmosphereModel(
-                boost::make_shared< CustomConstantTemperatureAtmosphere >( exponential_atmosphere_model, 215.0, 197.0, 1.3,
-                                                                           vectorOfModelSpecificParameters ) );
+    AvailableConstantTemperatureAtmosphereModels selectedOnboardAtmosphereModel = three_term_atmosphere_model;
+    std::vector< double > vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+    onboardBodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
+                selectedOnboardAtmosphereModel, 215.0, 197.0, 1.3, vectorOfModelSpecificParameters );
+
+    NamedBodyMap onboardBodyMap = createBodies( onboardBodySettings );
 
     onboardBodyMap[ "Satellite" ] = boost::make_shared< Body >( );
     onboardBodyMap[ "Satellite" ]->setConstantBodyMass( spacecraftMass );
@@ -275,7 +307,7 @@ int main( )
 
     // Define acceleration settings for onboard model
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > onboardAccelerationsOfSatellite;
-    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 2, 0 ) );
+    onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 4, 4 ) );
     onboardAccelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
     // Set accelerations settings
@@ -289,25 +321,36 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create control system object
-    boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >(
-                proportionalGain, integralGain, derivativeGain );
+    boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( proportionalGain, integralGain, derivativeGain );
 
-    // Create giudance system object
-    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 250e3, 320.0e3, 2800.0, 500.0e3, 0.19 );
+    // Create guidance system object
+    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
 
     // Create unscented Kalman filter settings object for navigation
-    boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
-            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
-    boost::shared_ptr< FilterSettings< > > filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
-                systemUncertainty, measurementUncertainty, simulationStartEpoch, initialEstimatedStateVector,
-                initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
+    boost::shared_ptr< FilterSettings< > > filteringSettings;
+    if ( useUnscentedKalmanFilter )
+    {
+        boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, onboardComputerRefreshStepSize );
+        filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
+                    systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
+                    initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
+    }
+    else
+    {
+        measurementUncertainty *= 1.0e7;
+        boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
+        filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
+                    systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
+                    initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
+    }
 
     // Create navigation system object
     boost::shared_ptr< NavigationSystem > navigationSystem = boost::make_shared< NavigationSystem >(
                 onboardBodyMap, onboardAccelerationModelMap, "Satellite", "Mars",
-                filteringSettings, exponential_atmosphere_model, marsAtmosphericInterfaceAltitude,
-                marsReducedAtmosphericInterfaceAltitude, numberOfRequiredAtmosphereSamplesForInitiation,
-                altimeterBodyFixedPointingDirection, altimeterAltitudeRange );
+                filteringSettings, selectedOnboardAtmosphereModel, marsAtmosphericInterfaceAltitude, marsReducedAtmosphericInterfaceAltitude,
+                periapseEstimatorConstant, numberOfRequiredAtmosphereSamplesForInitiation, frequencyOfDeepSpaceNetworkTracking );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE VEHICLE            /////////////////////////////////////////////////////////
@@ -340,8 +383,12 @@ int main( )
                 "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
 
     // Set aerodynamic coefficient and radiation pressure settings
-    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface( createAerodynamicCoefficientInterface(
-                                                                    aerodynamicCoefficientSettings, "Satellite" ) );
+    //    std::cerr << "Full aerodynamics are OFF." << std::endl;
+    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
+                createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
+    //                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
+    //                                                           referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
+    //                                                       "Satellite" ) );
     bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
                                                                radiationPressureSettings, "Satellite", bodyMap ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
@@ -355,6 +402,7 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
+    //    std::cerr << "Full Mars gravity is OFF." << std::endl;
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
@@ -363,6 +411,7 @@ int main( )
             accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
         }
     }
+    //    std::cerr << "Solar radiation is OFF." << std::endl;
     accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
@@ -383,8 +432,8 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Instrument errors
-    Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor;
-    Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment;
+    Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor, positionBias, positionScaleFactor;
+    Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment, positionMisalignment;
 
     std::default_random_engine generator;
     std::normal_distribution< double > distributionOne( 0.0, gyroscopeBiasStandardDeviation );
@@ -402,10 +451,13 @@ int main( )
         accelerometerMisalignment[ i ] = distributionThree( generator );
         gyroscopeMisalignment[ i ] = distributionThree( generator );
     }
+    positionBias.setZero( );
+    positionScaleFactor.setZero( );
+    positionMisalignment.setZero( );
 
     // Create navigation instruments object
-    boost::shared_ptr< NavigationInstrumentsModel > onboardInstruments =
-            boost::make_shared< NavigationInstrumentsModel >( bodyMap, accelerationModelMap, "Satellite", "Mars" );
+    boost::shared_ptr< InstrumentsModel > onboardInstruments = boost::make_shared< InstrumentsModel >(
+                bodyMap, accelerationModelMap, "Satellite", "Mars" );
 
     // Add inertial measurement unit
     onboardInstruments->addInertialMeasurementUnit( accelerationBias, accelerometerScaleFactor,
@@ -416,8 +468,12 @@ int main( )
     // Add star tracker
     onboardInstruments->addStarTracker( 2, starTrackerAccuracy );
 
-    // Add altimeter
-    onboardInstruments->addAltimeter( altimeterBodyFixedPointingDirection, altimeterAltitudeRange, altimeterAccuracyFunction );
+    // Add Deep Space Network tracking
+    onboardInstruments->addDeepSpaceNetwork( deepSpaceNetworkPositionAccuracy, deepSpaceNetworkVelocityAccuracy,
+                                             deepSpaceNetworkLightTimeAccuracy );
+
+    // Add generic ranging system
+    onboardInstruments->addGenericRangingSystem( positionBias, positionScaleFactor, positionMisalignment, positionAccuracy );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE DYNAMICS SETTINGS               ////////////////////////////////////////////
@@ -425,19 +481,26 @@ int main( )
 
     // Create onboard computer object
     boost::shared_ptr< OnboardComputerModel > onboardComputer = boost::make_shared< OnboardComputerModel >(
-                controlSystem, guidanceSystem, navigationSystem, onboardInstruments );
+                controlSystem, guidanceSystem, navigationSystem, onboardInstruments, saveFrequency );
 
     // Define termination conditions
     std::vector< boost::shared_ptr< PropagationTerminationSettings > > terminationSettingsList;
     terminationSettingsList.push_back( boost::make_shared< PropagationCustomTerminationSettings >(
                                            boost::bind( &OnboardComputerModel::checkStopCondition, onboardComputer, _1 ) ) );
+
+    boost::shared_ptr< SingleDependentVariableSaveSettings > terminationDependentVariable =
+            boost::make_shared< SingleDependentVariableSaveSettings >( altitude_dependent_variable, "Satellite", "Mars" );
+    terminationSettingsList.push_back( boost::make_shared< PropagationDependentVariableTerminationSettings >(
+                                           terminationDependentVariable, 0.95 * marsPropagationAtmosphericInterfaceAltitude, true ) );
+
     terminationSettingsList.push_back( boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch ) );
+    terminationSettingsList.push_back( boost::make_shared< PropagationCPUTimeTerminationSettings >( 10800.0 ) );
     boost::shared_ptr< PropagationTerminationSettings > terminationSettings =
             boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
 
     // Create integrator settings
     boost::shared_ptr< IntegratorSettings< > > integratorSettings = boost::make_shared< IntegratorSettings< > >(
-                rungeKutta4, simulationStartEpoch, simulationConstantStepSize );
+                rungeKutta4, simulationStartEpoch, simulationConstantStepSize, saveFrequency, false );
 
     // Dependent variables
     std::vector< boost::shared_ptr< SingleDependentVariableSaveSettings > > dependentVariablesList;
@@ -471,54 +534,181 @@ int main( )
 
     // Set full propagation settings
     std::vector< boost::shared_ptr< SingleArcPropagatorSettings< > > > propagatorSettingsList;
-    propagatorSettingsList.push_back( translationalPropagatorSettings );
-    propagatorSettingsList.push_back( rotationalPropagatorSettings );
-    boost::shared_ptr< PropagatorSettings< > > propagatorSettings =
-            boost::make_shared< MultiTypePropagatorSettings< > >(
-                propagatorSettingsList, terminationSettings,
-                boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList, false ) );
+    propagatorSettingsList.push_back( boost::dynamic_pointer_cast< SingleArcPropagatorSettings< > >( translationalPropagatorSettings ) );
+    propagatorSettingsList.push_back( boost::dynamic_pointer_cast< SingleArcPropagatorSettings< > >( rotationalPropagatorSettings ) );
+    boost::shared_ptr< PropagatorSettings< > > propagatorSettings = boost::dynamic_pointer_cast< PropagatorSettings< > >(
+                boost::make_shared< MultiTypePropagatorSettings< > >(
+                    propagatorSettingsList, terminationSettings,
+                    boost::make_shared< DependentVariableSaveSettings >( dependentVariablesList, false ) ) );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create empty dynamics simulator object
-    boost::shared_ptr< SingleArcDynamicsSimulator< > > dynamicsSimulator;
+    boost::shared_ptr< SingleArcDynamicsSimulator< > > dynamicsSimulator =
+            boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
+
+    // Update onboard models
+    onboardInstruments->updateInstruments( simulationStartEpoch );
 
     // Pre-allocate variables
     std::map< double, Eigen::VectorXd > fullIntegrationResult;
+    std::map< double, Eigen::VectorXd > fullDependentVariablesResults;
     std::map< double, Eigen::VectorXd > cartesianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > keplerianTranslationalIntegrationResult;
     std::map< double, Eigen::VectorXd > quaternionsRotationalIntegrationResult;
     std::map< double, Eigen::VectorXd > dependentVariablesResults;
 
+    // Add initial time and state
+    fullIntegrationResult[ simulationStartEpoch ] =
+            ( Eigen::VectorXd( 13 ) << translationalInitialState, rotationalInitialState ).finished( );
+
     // Create loop for each orbit and check condition for stopping aerobraking at the end
+    std::vector< bool > vectorOfTerminationConditions;
     do
     {
-        // Propagate until apoapsis
-        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >(
-                    bodyMap, integratorSettings, propagatorSettings, true, false, false, true );
+        // Propagate until a termination condition is reached
+        dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
+
+        // Retrieve elements from dynamics simulator
+        std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
+        std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
+        Eigen::VectorXd finalPropagatedState = currentFullIntegrationResult.rbegin( )->second;
+
+        // Reset time
+        integratorSettings->initialTime_ = currentFullIntegrationResult.rbegin( )->first;
+
+        // Reset other conditions based on termination reason
+        if ( dynamicsSimulator->getPropagationTerminationReason( )->getPropagationTerminationReason( ) == termination_condition_reached )
+        {
+            // Check which condition was met
+            boost::shared_ptr< PropagationTerminationDetailsFromHybridCondition > hybridTerminationDetails =
+                    boost::dynamic_pointer_cast< PropagationTerminationDetailsFromHybridCondition >(
+                        dynamicsSimulator->getPropagationTerminationReason( ) );
+            vectorOfTerminationConditions = hybridTerminationDetails->getWasConditionMetWhenStopping( );
+            if ( vectorOfTerminationConditions.at( 0 ) ) // onboard computer
+            {
+                if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::periapsis_raise_phase ) )
+                {
+                    // Add estimated apoapsis maneuver to state
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                }
+                else
+                {
+                    // Add estimated periapsis maneuver to state
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
+                }
+            }
+            else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
+            {
+                // Extract termination object
+                boost::shared_ptr< PropagationDependentVariableTerminationSettings > altitudeTerminationSettings =
+                        boost::dynamic_pointer_cast< PropagationDependentVariableTerminationSettings >( terminationSettingsList.at( 1 ) );
+
+                // Reset simulation variables
+                if ( altitudeTerminationSettings->useAsLowerLimit_ )
+                {
+                    // Change step size
+                    integratorSettings->initialTimeStep_ = simulationConstantStepSizeDuringAtmosphericPhase;
+                    navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSizeDuringAtmosphericPhase );
+                    onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracyAtmosphericPhase,
+                                                                                             gyroscopeAccuracyAtmosphericPhase );
+
+                    // Change altitude termination settings
+                    altitudeTerminationSettings->limitValue_ = 1.05 * marsPropagationAtmosphericInterfaceAltitude;
+                }
+                else
+                {
+                    // Change step size
+                    integratorSettings->initialTimeStep_ = simulationConstantStepSize;
+                    navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSize );
+                    onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracy,
+                                                                                             gyroscopeAccuracy );
+
+                    // Change altitude termination settings
+                    altitudeTerminationSettings->limitValue_ = 0.95 * marsPropagationAtmosphericInterfaceAltitude;
+                }
+
+                // Invert flag for next propagation
+                altitudeTerminationSettings->useAsLowerLimit_ = !altitudeTerminationSettings->useAsLowerLimit_;
+
+                // Overwrite propagation termination settings
+                terminationSettingsList.at( 1 ) = altitudeTerminationSettings;
+                terminationSettings = boost::make_shared< PropagationHybridTerminationSettings >( terminationSettingsList, true );
+                boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >(
+                            propagatorSettings )->resetTerminationSettings( terminationSettings );
+            }
+        }
+        else
+        {
+            // Inform user on error and break propagation
+            std::cerr << "Propagation was interrupted prematurely." << std::endl;
+
+            // Save results
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+            break;
+        }
+
+        // Reset state
+        propagatorSettings->resetInitialStates( finalPropagatedState );
+
+        // Overwrite dynamics simulator
+        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
+
+        // Save results
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.erase( integratorSettings->initialTime_ );
+            fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+            currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+            currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first );
+        }
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        }
+    }
+    while ( !( onboardComputer->isAerobrakingComplete( ) || vectorOfTerminationConditions.at( 2 ) || vectorOfTerminationConditions.at( 3 ) ) );
+
+    // Propagate for one final orbit, to check orbit configuration
+    if ( ( simulationEndEpoch - simulationStartEpoch ) > 50.0 )
+    {
+        terminationSettings = boost::make_shared< PropagationTimeTerminationSettings >(
+                    integratorSettings->initialTime_ + physical_constants::JULIAN_DAY );
+        boost::dynamic_pointer_cast< SingleArcPropagatorSettings< > >( propagatorSettings )->resetTerminationSettings( terminationSettings );
+        dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
+        dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );
 
         // Retrieve elements from dynamics simulator
         std::map< double, Eigen::VectorXd > currentFullIntegrationResult = dynamicsSimulator->getEquationsOfMotionNumericalSolution( );
         std::map< double, Eigen::VectorXd > currentDependentVariablesResults = dynamicsSimulator->getDependentVariableHistory( );
 
-        Eigen::VectorXd finalPropagatedState = currentFullIntegrationResult.rbegin( )->second;
-
-        // Add estimated apoapsis maneuver to state and modify state
-        integratorSettings->initialTime_ = currentFullIntegrationResult.rbegin( )->first;
-        finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-        propagatorSettings->resetInitialStates( finalPropagatedState );
-
         // Save results
-        fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
-        dependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.erase( integratorSettings->initialTime_ );
+            fullDependentVariablesResults.erase( integratorSettings->initialTime_ );
+            currentFullIntegrationResult.erase( currentFullIntegrationResult.begin( )->first );
+            currentDependentVariablesResults.erase( currentDependentVariablesResults.begin( )->first );
+        }
+        if ( !fullIntegrationResult.empty( ) )
+        {
+            fullIntegrationResult.insert( currentFullIntegrationResult.begin( ), currentFullIntegrationResult.end( ) );
+            fullDependentVariablesResults.insert( currentDependentVariablesResults.begin( ), currentDependentVariablesResults.end( ) );
+        }
     }
-    while ( !onboardComputer->isAerobrakingComplete( ) );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////             RETRIEVE RESULTS           ////////////////////////////////////////////////////////
+    ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Output path
+    std::string outputPath = getOutputPath( );
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
@@ -534,10 +724,18 @@ int main( )
         cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
         quaternionsRotationalIntegrationResult[ stateIterator->first ] = currentFullState.segment( 6, 7 );
 
-        // Copute current Keplerian state
+        // Compute current Keplerian state
         keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
                     currentCartesianState, marsGravitationalParameter );
+
+        // Store dependent variables
+        dependentVariablesResults[ stateIterator->first ] = fullDependentVariablesResults[ stateIterator->first ];
     }
+
+    // Write propagation history to files
+    writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "cartesianPropagated.dat", outputPath );
+    writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "keplerianPropagated.dat", outputPath );
+    writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", outputPath );
 
     // Get estimated states
     std::map< double, std::pair< std::pair< Eigen::Vector6d, Eigen::Vector6d >, Eigen::Vector7d > > fullEstimationResult =
@@ -565,53 +763,109 @@ int main( )
         }
     }
 
-    // Get instrument measurements and correct them
-//    Eigen::Vector6d estimatedAccelerometerErrors = navigationSystem->getEstimatedAccelerometerErrors( );
-    Eigen::Vector6d estimatedAccelerometerErrors = navigationSystem->getCurrentEstimatedState( ).segment( 10, 6 );
-    Eigen::Vector6d estimatedGyroscopeErrors = navigationSystem->getCurrentEstimatedState( ).segment( 16, 6 );
-    std::map< double, Eigen::Vector6d > inertialMeasurementUnitMeasurements =
-            onboardInstruments->getCurrentOrbitHistoryOfInertialMeasurmentUnitMeasurements( );
-    for ( std::map< double, Eigen::Vector6d >::iterator
-          measurementIterator = inertialMeasurementUnitMeasurements.begin( );
-          measurementIterator != inertialMeasurementUnitMeasurements.end( ); measurementIterator++ )
+    // Check that very last estimate is present
+    if ( ( simulationEndEpoch - simulationStartEpoch ) < 50.0 )
     {
-        measurementIterator->second.segment( 0, 3 ) =
-                removeErrorsFromInertialMeasurementUnitMeasurement( measurementIterator->second.segment( 0, 3 ),
-                                                                    estimatedAccelerometerErrors );
-        measurementIterator->second.segment( 3, 3 ) =
-                removeErrorsFromInertialMeasurementUnitMeasurement( measurementIterator->second.segment( 3, 3 ),
-                                                                    estimatedGyroscopeErrors );
+        double finalTime = cartesianTranslationalIntegrationResult.rbegin( )->first;
+        if ( cartesianTranslationalEstimationResult.count( finalTime ) == 0 )
+        {
+            std::pair< Eigen::Vector6d, Eigen::Vector6d > finalEstimatedTranslationalState =
+                    navigationSystem->getCurrentEstimatedTranslationalState( );
+            cartesianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.first;
+            keplerianTranslationalEstimationResult[ finalTime ] = finalEstimatedTranslationalState.second;
+        }
     }
-    std::map< double, Eigen::Vector3d > onboardExpectedMeasurements =
-            navigationSystem->getCurrentOrbitHistoryOfEstimatedNonGravitationalTranslationalAccelerations( );
-    std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
-    std::cout << "Gyro. Error: " << estimatedGyroscopeErrors.transpose( ) << std::endl;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////        PROVIDE OUTPUT TO CONSOLE AND FILES           //////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // Write perturbed satellite propagation history to files
-    writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "cartesianPropagated.dat", getOutputPath( ) );
-    writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "keplerianPropagated.dat", getOutputPath( ) );
-    writeDataMapToTextFile( quaternionsRotationalIntegrationResult, "rotationalPropagated.dat", getOutputPath( ) );
-    writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", getOutputPath( ) );
 
     // Write estimated satellite state hisotry to files
-    writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", getOutputPath( ) );
-    writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", getOutputPath( ) );
-    writeDataMapToTextFile( quaternionsRotationalEstimationResult, "rotationalEstimated.dat", getOutputPath( ) );
+    writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", outputPath );
+    writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
 
-//    // Write estimated states directly from uscented Kalman filter
-//    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( ),
-//                            "filterStateEstimates.dat", getOutputPath( ) );
-//    writeDataMapToTextFile( navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( ),
-//                            "filterCovarianceEstimates.dat", getOutputPath( ) );
+    // Filter results
+    if ( extractFilterResults )
+    {
+        // Get estimated states from filter
+        std::map< double, Eigen::VectorXd > fullFilterStateEstimates =
+                navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( );
+        std::map< double, Eigen::MatrixXd > fullFilterCovarianceEstimates =
+                navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( );
 
-    // Write other data to file
-    writeDataMapToTextFile( controlTorques, "controlTorques.dat", getOutputPath( ) );
-    writeDataMapToTextFile( inertialMeasurementUnitMeasurements, "inertialMeasurements.dat", getOutputPath( ) );
-    writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", getOutputPath( ) );
+        // Extract states and covariances from filter
+        unsigned int i = 0;
+        std::map< double, Eigen::VectorXd > filterStateEstimates;
+        std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
+        for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullFilterStateEstimates.begin( );
+              stateIterator != fullFilterStateEstimates.end( ); stateIterator++, i++ )
+        {
+            if ( ( i % saveFrequency ) == 0 )
+            {
+                filterStateEstimates[ stateIterator->first ] = stateIterator->second;
+                filterCovarianceEstimates[ stateIterator->first ] =
+                        Eigen::VectorXd( fullFilterCovarianceEstimates[ stateIterator->first ].diagonal( ) );
+            }
+        }
+
+        // Write estimated states directly from navigation filter
+        writeDataMapToTextFile( filterStateEstimates, "filterStateEstimates.dat", outputPath );
+        writeDataMapToTextFile( filterCovarianceEstimates, "filterCovarianceEstimates.dat", outputPath );
+    }
+
+    // Get estimated accelerometer errors
+    Eigen::Vector3d estimatedAccelerometerErrors = navigationSystem->getEstimatedAccelerometerErrors( );
+    std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
+
+    // Measurements
+    if ( extractMeasurementResults )
+    {
+        // Get instrument measurements and correct them
+        unsigned int i = 0;
+        std::map< double, Eigen::Vector6d > fullInertialMeasurementUnitMeasurements =
+                onboardInstruments->getCurrentOrbitHistoryOfInertialMeasurmentUnitMeasurements( );
+        std::map< double, Eigen::Vector3d > fullOnboardExpectedMeasurements =
+                navigationSystem->getCurrentOrbitHistoryOfEstimatedNonGravitationalTranslationalAccelerations( );
+        std::map< double, Eigen::Vector3d > accelerometerMeasurements;
+        std::map< double, Eigen::Vector3d > onboardExpectedMeasurements;
+        for ( std::map< double, Eigen::Vector6d >::const_iterator
+              measurementIterator = fullInertialMeasurementUnitMeasurements.begin( );
+              measurementIterator != fullInertialMeasurementUnitMeasurements.end( ); measurementIterator++, i++ )
+        {
+            if ( ( i % saveFrequency ) == 0 )
+            {
+                accelerometerMeasurements[ measurementIterator->first ] =
+                        removeErrorsFromInertialMeasurementUnitMeasurement( measurementIterator->second.segment( 0, 3 ),
+                                                                            estimatedAccelerometerErrors );
+                onboardExpectedMeasurements[ measurementIterator->first ] =
+                        fullOnboardExpectedMeasurements[ measurementIterator->first ];
+            }
+        }
+
+        // Write other data to file
+        writeDataMapToTextFile( accelerometerMeasurements, "accelerometerMeasurements.dat", outputPath );
+        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
+    }
+
+    // Extract atmosphere data
+    if ( extractAtmosphericData )
+    {
+        std::map< unsigned int, Eigen::VectorXd > atmosphericParameters = navigationSystem->getHistoryOfEstimatedAtmosphereParameters( );
+        writeDataMapToTextFile( atmosphericParameters, "atmosphericParameters.dat", outputPath );
+    }
+
+    // Extract maneuver information
+    if ( extractManeuverInformation )
+    {
+        std::map< unsigned int, std::pair< double, double > > pairOfPeriapsisCorridorBoundaries =
+                guidanceSystem->getHistoryOfEstimatedPeriapsisCorridorBoundaries( );
+        std::map< unsigned int, Eigen::Vector2d > periapsisCorridorBoundaries;
+        for ( std::map< unsigned int, std::pair< double, double > >::const_iterator mapIterator = pairOfPeriapsisCorridorBoundaries.begin( );
+              mapIterator != pairOfPeriapsisCorridorBoundaries.end( ); mapIterator++ )
+        {
+            periapsisCorridorBoundaries[ mapIterator->first ] =
+                    ( Eigen::VectorXd( 2 ) << mapIterator->second.first, mapIterator->second.second ).finished( );
+        }
+        std::map< unsigned int, double > apoaspsisManeuverMagnitudes = guidanceSystem->getHistoryOfApsisManeuverMagnitudes( ).second;
+        writeDataMapToTextFile( periapsisCorridorBoundaries, "periapsisCorridors.dat", outputPath );
+        writeDataMapToTextFile( apoaspsisManeuverMagnitudes, "apoapsisManeuver.dat", outputPath );
+    }
 
     // Final statement
     // The exit code EXIT_SUCCESS indicates that the program was successfully executed

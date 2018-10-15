@@ -91,9 +91,6 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
-    // Save settings
-    bool extractFilterResults = true;
-
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            SETTINGS LOOP                 //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -101,7 +98,7 @@ int main( )
     // Initial conditions settings:
     //      0 -> high eccentricity
     //      1 -> low eccentricity
-    const unsigned int initialConditions = 1;
+    const unsigned int initialConditions = 0;
     const bool useUnscentedKalmanFilter = false;
 
     // Onboard comptuer frequencies
@@ -271,16 +268,7 @@ int main( )
             const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
 
             // Save frequency
-            unsigned int saveFrequency;
-            switch ( initialConditions )
-            {
-            case 0:
-                saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
-                break;
-            case 1:
-                saveFrequency = ratioOfOnboardOverSimulatedTimes;
-                break;
-            }
+            unsigned int saveFrequency = ratioOfOnboardOverSimulatedTimes;
 
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
             ///////////////////////             DEFINE ONBOARD PARAMETERS              ////////////////////////////////////////////
@@ -749,12 +737,13 @@ int main( )
             ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            // Save frequency and output path
+            // Output path
             std::string outputPath;
             switch ( initialConditions )
             {
             case 0:
-                outputPath = getOutputPath( std::to_string( simulation ) + "/" + std::to_string( ratioOfOnboardOverSimulatedTimes ) );
+                outputPath = getOutputPath( "high_ecc/" + std::to_string( simulation ) + "/" +
+                                            std::to_string( ratioOfOnboardOverSimulatedTimes ) );
                 break;
             case 1:
                 outputPath = getOutputPath( "low_ecc/" + std::to_string( simulation ) + "/" +
@@ -763,25 +752,21 @@ int main( )
             }
 
             // Compute map of Kepler elements
-            unsigned int i = 0;
             Eigen::VectorXd currentFullState;
             Eigen::Vector6d currentCartesianState;
             for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullIntegrationResult.begin( );
-                  stateIterator != fullIntegrationResult.end( ); stateIterator++, i++ )
+                  stateIterator != fullIntegrationResult.end( ); stateIterator++ )
             {
-                if ( ( i % saveFrequency ) == 0 )
-                {
-                    // Get current states
-                    currentFullState = stateIterator->second;
-                    currentCartesianState = currentFullState.segment( 0, 6 );
+                // Get current states
+                currentFullState = stateIterator->second;
+                currentCartesianState = currentFullState.segment( 0, 6 );
 
-                    // Store translational and rotational states
-                    cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
+                // Store translational and rotational states
+                cartesianTranslationalIntegrationResult[ stateIterator->first ] = currentCartesianState;
 
-                    // Compute current Keplerian state
-                    keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
-                                currentCartesianState, marsGravitationalParameter );
-                }
+                // Compute current Keplerian state
+                keplerianTranslationalIntegrationResult[ stateIterator->first ] = convertCartesianToKeplerianElements(
+                            currentCartesianState, marsGravitationalParameter );
             }
 
             // Write propagation history to files
@@ -816,38 +801,31 @@ int main( )
             writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", outputPath );
             writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
 
-            // Filter results
-            if ( extractFilterResults )
+            // Get estimated states from filter
+            std::map< double, Eigen::VectorXd > fullFilterStateEstimates =
+                    navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( );
+            std::map< double, Eigen::MatrixXd > fullFilterCovarianceEstimates =
+                    navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( );
+
+            // Extract states and covariances from filter
+            unsigned int i = 0;
+            std::map< double, Eigen::VectorXd > filterStateEstimates;
+            std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
+            saveFrequency = std::max< unsigned int >( static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
+            for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullFilterStateEstimates.begin( );
+                  stateIterator != fullFilterStateEstimates.end( ); stateIterator++, i++ )
             {
-                // Get estimated states from filter
-                std::map< double, Eigen::VectorXd > fullFilterStateEstimates =
-                        navigationSystem->getHistoryOfEstimatedStatesFromNavigationFilter( );
-                std::map< double, Eigen::MatrixXd > fullFilterCovarianceEstimates =
-                        navigationSystem->getHistoryOfEstimatedCovarianceFromNavigationFilter( );
-
-                // Extract states and covariances from filter
-                unsigned int i = 0;
-                std::map< double, Eigen::VectorXd > filterStateEstimates;
-                std::map< double, Eigen::VectorXd > filterCovarianceEstimates;
-                for ( std::map< double, Eigen::VectorXd >::const_iterator stateIterator = fullFilterStateEstimates.begin( );
-                      stateIterator != fullFilterStateEstimates.end( ); stateIterator++, i++ )
+                if ( ( i % saveFrequency ) == 0 )
                 {
-                    if ( ( i % saveFrequency ) == 0 )
-                    {
-                        filterStateEstimates[ stateIterator->first ] = stateIterator->second;
-                        filterCovarianceEstimates[ stateIterator->first ] =
-                                Eigen::VectorXd( fullFilterCovarianceEstimates[ stateIterator->first ].diagonal( ) );
-                    }
+                    filterStateEstimates[ stateIterator->first ] = stateIterator->second;
+                    filterCovarianceEstimates[ stateIterator->first ] =
+                            Eigen::VectorXd( fullFilterCovarianceEstimates[ stateIterator->first ].diagonal( ) );
                 }
-
-                // Write estimated states directly from navigation filter
-                writeDataMapToTextFile( filterStateEstimates, "filterStateEstimates.dat", outputPath );
-                writeDataMapToTextFile( filterCovarianceEstimates, "filterCovarianceEstimates.dat", outputPath );
             }
 
-            // Get estimated accelerometer errors
-            Eigen::Vector3d estimatedAccelerometerErrors = navigationSystem->getEstimatedAccelerometerErrors( );
-            std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
+            // Write estimated states directly from navigation filter
+            writeDataMapToTextFile( filterStateEstimates, "filterStateEstimates.dat", outputPath );
+            writeDataMapToTextFile( filterCovarianceEstimates, "filterCovarianceEstimates.dat", outputPath );
         }
     }
 
