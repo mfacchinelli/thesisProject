@@ -34,8 +34,8 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     std::string filePath_( __FILE__ );
 
     // Strip filename from temporary string and return root-path string.
-    std::string reducedPath = filePath_.substr( 0, filePath_.length( ) - std::string( "thesisTransOnly.cpp" ).length( ) );
-    std::string outputPath = reducedPath + "SimulationOutputTransOnly/";
+    std::string reducedPath = filePath_.substr( 0, filePath_.length( ) - std::string( "thesisTransOnlyReduced.cpp" ).length( ) );
+    std::string outputPath = reducedPath + "SimulationOutputTransOnlyReduced/";
     if ( extraDirectory != "" )
     {
         outputPath += extraDirectory;
@@ -105,8 +105,8 @@ int main( )
     spice_interface::loadStandardSpiceKernels( );
 
     // Set simulation time settings
-    const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationStartEpoch = 236576160.073777;
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -141,7 +141,7 @@ int main( )
     // Give Mars a more detailed environment
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
-    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+//    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
     bodySettings[ "Mars" ]->atmosphereSettings =
 //            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
 //                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
@@ -177,18 +177,10 @@ int main( )
     const unsigned int frequencyOfDeepSpaceNetworkTracking = -1;
     const unsigned int numberOfRequiredAtmosphereSamplesForInitiation = 7;
 
-    // Set initial Keplerian elements for satellite
-    Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;//4708500.0;//
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;//0.252203;//
-    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
-    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
-    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
-    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );
-
     // Define initial translational state
-    const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements( initialStateInKeplerianElements,
-                                                                                           marsGravitationalParameter );
+    Eigen::Vector6d translationalInitialState;
+    translationalInitialState << 3812.24398415264e3, -441.545252133481e3, -1139.60147509625e3,
+            -843.984151288834, 477.226994880592, -3008.41255051917;
 
     // Simulation times
     const bool useUnscentedKalmanFilter = true;
@@ -210,8 +202,15 @@ int main( )
 
     // Initial conditions
     Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
-    initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
+    initialEstimatedStateVector.segment( 0, 6 ) << 3812.25089656191e3, -441.539044397109e3, -1139.60489393642e3,
+            -844.01409852198, 477.260913679265, -3008.41595833966;
+    initialEstimatedStateVector.segment( 6, 3 ) << -0.000123974, 5.23187e-06, 9.7221e-06;
+
+    Eigen::Vector9d diagonalOfEstimatedStateCovarianceMatrix;
+    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 229.965913826467 ),
+            Eigen::Vector3d::Constant( 90.7673829283042 ),
+            Eigen::Vector3d::Constant( 9.03047456368276e-05 );
+    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = diagonalOfEstimatedStateCovarianceMatrix.asDiagonal( );
 
     // Define instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
@@ -284,10 +283,11 @@ int main( )
     switch ( selectedOnboardAtmosphereModel )
     {
     case exponential_atmosphere_model:
-        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0 };
+        vectorOfModelSpecificParameters = { 115310.481732592, 3.00847858579386e-08, 5508.51947283614 };
         break;
     case three_term_atmosphere_model:
-        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+        vectorOfModelSpecificParameters = { 115310.481732592, 3.00847858579386e-08, 5508.51947283614,
+                                            -1.11670365150607, 0.185899133123822, 0.129611102672518 };
         break;
     default:
         throw std::runtime_error( "Error in simulation. Selected atmosphere model not supported." );
