@@ -135,18 +135,11 @@ int main( )
 
     // Give Mars a more detailed environment
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
-
-    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings =
-//            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-//                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-            boost::make_shared< TabulatedAtmosphereSettings >(
+    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< TabulatedAtmosphereSettings >(
                 tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
-    std::cerr << "Sun gravity is OFF." << std::endl;
-    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
 
     // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
@@ -154,6 +147,7 @@ int main( )
     // Define simulation objects
     std::vector< std::string > bodiesToPropagate;
     bodiesToPropagate.push_back( "Satellite" );
+
     std::vector< std::string > centralBodies;
     centralBodies.push_back( "Mars" );
 
@@ -167,30 +161,32 @@ int main( )
     const double marsAtmosphericInterfaceAltitude = 200.0e3;
     const double marsReducedAtmosphericInterfaceAltitude = 150.0e3;
     const double periapseEstimatorConstant = 0.955;
-    const unsigned int frequencyOfDeepSpaceNetworkTracking = 3;
+    const unsigned int frequencyOfDeepSpaceNetworkTracking = -1;
     const unsigned int numberOfRequiredAtmosphereSamplesForInitiation = 7;
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 25946932.3;//25959.1674366749e3;//
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.8651912;//0.864406332964218;//
-    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93 );//92.94201293531 );//
-    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );//158.747023768525 );//
-    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );//43.4614630865081 );//
-    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );//180.001215403088 );//
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
+    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
+    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
+    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );
 
     // Define initial translational state
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements( initialStateInKeplerianElements,
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.05; // 10 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
-    const double ratioOfOnboardOverSimulatedTimes = 1.0;
+    const bool useUnscentedKalmanFilter = true;
+    const double simulationConstantStepSize = 0.1; // 10 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.02; // 50 Hz
+    const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
             simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
+    const double onboardComputerRefreshRateDuringAtmosphericPhase = 1.0 / onboardComputerRefreshStepSizeDuringAtmosphericPhase; // Hertz
 
     // Save frequency
     const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
@@ -200,28 +196,31 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
-    Eigen::Vector12d initialEstimatedStateVector = Eigen::Vector12d::Zero( );
+    Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-    Eigen::Matrix12d initialEstimatedStateCovarianceMatrix = Eigen::Matrix12d::Identity( );
+    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
 
     // Define instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
-    const double gyroscopeScaleFactorStandardDeviation = 1.0e-4;
+    const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
     const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
+
+    const Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+    const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
 
     // Define Deep Space Network accuracy
     const double deepSpaceNetworkPositionAccuracy = 10.0;
     const double deepSpaceNetworkVelocityAccuracy = 0.01;
     const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
-    // System and measurment uncertainties
-    const double positionStandardDeviation = 1.0e2;
-    const double translationalVelocityStandardDeviation = 1.0e-1;
-    const double attitudeStandardDeviation = 1.0e-4;
+    // Define generic ranging system accuracy
+    const Eigen::Vector3d positionAccuracy = Eigen::Vector3d::Constant( 5.0e2 );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -253,8 +252,19 @@ int main( )
     onboardBodySettings[ "Mars" ]->rotationModelSettings->resetOriginalFrame( "J2000" );
     onboardBodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
-    AvailableConstantTemperatureAtmosphereModels selectedOnboardAtmosphereModel = three_term_atmosphere_model;
-    std::vector< double > vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+    AvailableConstantTemperatureAtmosphereModels selectedOnboardAtmosphereModel = exponential_atmosphere_model;
+    std::vector< double > vectorOfModelSpecificParameters;
+    switch ( selectedOnboardAtmosphereModel )
+    {
+    case exponential_atmosphere_model:
+        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0 };
+        break;
+    case three_term_atmosphere_model:
+        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+        break;
+    default:
+        throw std::runtime_error( "Error in simulation. Selected atmosphere model not supported." );
+    }
     onboardBodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
                 selectedOnboardAtmosphereModel, 215.0, 197.0, 1.3, vectorOfModelSpecificParameters );
 
@@ -281,6 +291,30 @@ int main( )
     AccelerationMap onboardAccelerationModelMap = createAccelerationModelsMap(
                 onboardBodyMap, onboardAccelerationMap, bodiesToPropagate, centralBodies );
 
+    // Instrument errors
+    Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor, positionBias, positionScaleFactor;
+    Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment, positionMisalignment;
+
+    std::default_random_engine generator;
+    std::normal_distribution< double > distributionOne( 0.0, gyroscopeBiasStandardDeviation );
+    std::normal_distribution< double > distributionTwo( 0.0, gyroscopeScaleFactorStandardDeviation );
+    std::normal_distribution< double > distributionThree( 0.0, 1.0e-3 );
+    for ( unsigned int i = 0; i < 6; i++ )
+    {
+        if ( i < 3 )
+        {
+            accelerationBias[ i ] = distributionTwo( generator );
+            accelerometerScaleFactor[ i ] = distributionTwo( generator );
+            gyroscopeBias[ i ] = distributionOne( generator );
+            gyroscopeScaleFactor[ i ] = distributionTwo( generator );
+        }
+        accelerometerMisalignment[ i ] = distributionThree( generator );
+        gyroscopeMisalignment[ i ] = distributionThree( generator );
+    }
+    positionBias.setZero( );
+    positionScaleFactor.setZero( );
+    positionMisalignment.setZero( );
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             CREATE GNC MODELS                      ////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -301,12 +335,11 @@ int main( )
                           << std::endl;
 
                 // Define uncertainties
-                Eigen::Vector12d diagonalOfSystemUncertainty;
+                Eigen::Vector9d diagonalOfSystemUncertainty;
                 diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, p ), 2 ) ),
                         Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, v ), 2 ) ),
-                        Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
-                        Eigen::Vector3d::Constant( std::pow( accelerometerScaleFactorStandardDeviation, 2 ) );
-                Eigen::Matrix12d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+                        Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
+                Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
                 Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, m ), 2 ) ).asDiagonal( );
 
@@ -317,18 +350,20 @@ int main( )
                 boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
 
                 // Create unscented Kalman filter settings object for navigation
-                bool useUnscentedKalmanFilter = false;
-                boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
-                        boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
                 boost::shared_ptr< FilterSettings< > > filteringSettings;
                 if ( useUnscentedKalmanFilter )
                 {
+                    boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                            boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, onboardComputerRefreshStepSize );
                     filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
                                 systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                                 initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
                 }
                 else
                 {
+                    measurementUncertainty *= 1.0e7;
+                    boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
                     filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
                                 systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                                 initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
@@ -391,8 +426,7 @@ int main( )
                         accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
                     }
                 }
-//                accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
-                std::cerr << "Solar radiation is OFF." << std::endl;
+                accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
                 accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
                 // Set accelerations settings
@@ -404,30 +438,9 @@ int main( )
                 ///////////////////////             CREATE INSTRUMENT MODELS               ////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                // Instrument errors
-                Eigen::Vector3d accelerationBias, accelerometerScaleFactor, gyroscopeBias, gyroscopeScaleFactor;
-                Eigen::Vector6d accelerometerMisalignment, gyroscopeMisalignment;
-
-                std::default_random_engine generator;
-                std::normal_distribution< double > distributionOne( 0.0, gyroscopeBiasStandardDeviation );
-                std::normal_distribution< double > distributionTwo( 0.0, gyroscopeScaleFactorStandardDeviation );
-                std::normal_distribution< double > distributionThree( 0.0, 1.0e-3 );
-                for ( unsigned int i = 0; i < 6; i++ )
-                {
-                    if ( i < 3 )
-                    {
-                        accelerationBias[ i ] = distributionTwo( generator );
-                        accelerometerScaleFactor[ i ] = distributionTwo( generator );
-                        gyroscopeBias[ i ] = distributionOne( generator );
-                        gyroscopeScaleFactor[ i ] = distributionTwo( generator );
-                    }
-                    accelerometerMisalignment[ i ] = distributionThree( generator );
-                    gyroscopeMisalignment[ i ] = distributionThree( generator );
-                }
-
                 // Create navigation instruments object
-                boost::shared_ptr< InstrumentsModel > onboardInstruments =
-                        boost::make_shared< InstrumentsModel >( bodyMap, accelerationModelMap, "Satellite", "Mars" );
+                boost::shared_ptr< InstrumentsModel > onboardInstruments = boost::make_shared< InstrumentsModel >(
+                            bodyMap, accelerationModelMap, "Satellite", "Mars" );
 
                 // Add inertial measurement unit
                 onboardInstruments->addInertialMeasurementUnit( accelerationBias, accelerometerScaleFactor,
@@ -441,6 +454,9 @@ int main( )
                 // Add Deep Space Network tracking
                 onboardInstruments->addDeepSpaceNetwork( deepSpaceNetworkPositionAccuracy, deepSpaceNetworkVelocityAccuracy,
                                                          deepSpaceNetworkLightTimeAccuracy );
+
+                // Add generic ranging system
+                onboardInstruments->addGenericRangingSystem( positionBias, positionScaleFactor, positionMisalignment, positionAccuracy );
 
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 ///////////////////////             CREATE DYNAMICS SETTINGS               ////////////////////////////////////////////
@@ -465,16 +481,10 @@ int main( )
                         boost::make_shared< PropagationTimeTerminationSettings >( simulationEndEpoch );
 
                 // Create propagation settings for translational dynamics
-                boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
+                boost::shared_ptr< PropagatorSettings< > > propagatorSettings =
                         boost::make_shared< TranslationalStatePropagatorSettings< > >(
                             centralBodies, accelerationModelMap, bodiesToPropagate, translationalInitialState,
-                            terminationSettings, cowell );
-
-                // Set full propagation settings
-                std::vector< boost::shared_ptr< SingleArcPropagatorSettings< > > > propagatorSettingsList;
-                propagatorSettingsList.push_back( translationalPropagatorSettings );
-                boost::shared_ptr< PropagatorSettings< > > propagatorSettings = boost::make_shared< MultiTypePropagatorSettings< > >(
-                            propagatorSettingsList, terminationSettings );
+                            terminationSettings, unified_state_model_exponential_map );
 
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 ///////////////////////             PROPAGATE ORBIT            ////////////////////////////////////////////////////////
@@ -525,6 +535,16 @@ int main( )
                     if ( currentTimeStep != previousTimeStep )
                     {
                         navigationSystem->resetNavigationRefreshStepSize( currentTimeStep );
+                        if ( currentTimeStep == onboardComputerRefreshStepSize )
+                        {
+                            onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracy,
+                                                                                                     gyroscopeAccuracy );
+                        }
+                        else
+                        {
+                            onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracyAtmosphericPhase,
+                                                                                                     gyroscopeAccuracyAtmosphericPhase );
+                        }
                     }
 
                     // Update time

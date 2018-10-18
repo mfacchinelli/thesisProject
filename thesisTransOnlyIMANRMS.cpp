@@ -20,6 +20,8 @@
 #include "Tudat/Mathematics/Filters/createFilter.h"
 #include "Tudat/Astrodynamics/Propagators/rotationalMotionQuaternionsStateDerivative.h"
 
+#include "Tudat/Astrodynamics/Propagators/imanRmsMethod.h"
+
 #include "Tudat/Astrodynamics/SystemModels/controlSystem.h"
 #include "Tudat/Astrodynamics/SystemModels/guidanceSystem.h"
 #include "Tudat/Astrodynamics/SystemModels/instrumentsModel.h"
@@ -48,6 +50,8 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
 
     return outputPath;
 }
+
+bool tudat::propagators::IMAN_RMS_ANALYSIS;
 
 //! Class to keep attitude constant.
 class AerobrakingAerodynamicGuidance: public tudat::aerodynamics::AerodynamicGuidance
@@ -95,10 +99,12 @@ int main( )
     ///////////////////////            SETTINGS LOOP                 //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    IMAN_RMS_ANALYSIS = true;
+
     // Initial conditions settings:
     //      0 -> high eccentricity
     //      1 -> low eccentricity
-    const unsigned int initialConditions = 0;
+    const unsigned int initialConditions = 1;
     const bool useUnscentedKalmanFilter = false;
 
     // Onboard comptuer frequencies
@@ -266,6 +272,7 @@ int main( )
             const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
                     simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
             const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
+            const double onboardComputerRefreshRateDuringAtmosphericPhase = 1.0 / onboardComputerRefreshStepSizeDuringAtmosphericPhase; // Hertz
 
             // Save frequency
             unsigned int saveFrequency = ratioOfOnboardOverSimulatedTimes;
@@ -275,18 +282,28 @@ int main( )
             ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             // Initial conditions
-            Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
+            Eigen::Vector10d initialEstimatedStateVector = Eigen::Vector10d::Zero( );
             initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-            Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
+            initialEstimatedStateVector[ 9 ] = 1.9;
+            Eigen::Matrix10d initialEstimatedStateCovarianceMatrix = Eigen::Matrix10d::Identity( );
 
             // Define instrument accuracy
             const double accelerometerBiasStandardDeviation = 1.0e-4;
             const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
             const double gyroscopeBiasStandardDeviation = 5.0e-9;
             const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
-            const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
+            Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
             const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
             const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
+
+            Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+                    Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+            const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
+                    Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+
+            // Reduce accelerometer noise
+            accelerometerAccuracy *= 1.0e-1; // thanks to smoothing process
+            accelerometerAccuracyAtmosphericPhase *= 1.0e-1; // thanks to smoothing process
 
             // Define Deep Space Network accuracy
             const double deepSpaceNetworkPositionAccuracy = 10.0;
@@ -294,13 +311,14 @@ int main( )
             const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
             // System and measurment uncertainties
-            const double positionStandardDeviation = 1.0e0;
-            const double translationalVelocityStandardDeviation = 1.0e-3;
-            Eigen::Vector9d diagonalOfSystemUncertainty;
+            const double positionStandardDeviation = 1.0e2;
+            const double translationalVelocityStandardDeviation = 1.0e-1;
+            Eigen::Vector10d diagonalOfSystemUncertainty;
             diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
                     Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
-                    Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
-            Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+                    Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
+                    std::pow( 1.0e-1, 2 );
+            Eigen::Matrix10d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
             Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e2, 2 ) ).asDiagonal( );
 
@@ -398,17 +416,19 @@ int main( )
                         255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
 
             // Create unscented Kalman filter settings object for navigation
-            boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
-                    boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
             boost::shared_ptr< FilterSettings< > > filteringSettings;
             if ( useUnscentedKalmanFilter )
             {
+                boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                        boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, onboardComputerRefreshStepSize );
                 filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
                             systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                             initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
             }
             else
             {
+                boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                        boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
                 filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
                             systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                             initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
@@ -674,6 +694,8 @@ int main( )
                             // Change step size
                             integratorSettings->initialTimeStep_ = simulationConstantStepSizeDuringAtmosphericPhase;
                             navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSizeDuringAtmosphericPhase );
+                            onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracyAtmosphericPhase,
+                                                                                                     gyroscopeAccuracyAtmosphericPhase );
 
                             // Change altitude termination settings
                             altitudeTerminationSettings->limitValue_ = 1.05 * marsPropagationAtmosphericInterfaceAltitude;
@@ -683,6 +705,8 @@ int main( )
                             // Change step size
                             integratorSettings->initialTimeStep_ = simulationConstantStepSize;
                             navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSize );
+                            onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracy,
+                                                                                                     gyroscopeAccuracy );
 
                             // Change altitude termination settings
                             altitudeTerminationSettings->limitValue_ = 0.95 * marsPropagationAtmosphericInterfaceAltitude;

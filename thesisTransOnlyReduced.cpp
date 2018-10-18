@@ -105,8 +105,8 @@ int main( )
     spice_interface::loadStandardSpiceKernels( );
 
     // Set simulation time settings
-    const double simulationStartEpoch = 236576160.073777;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationStartEpoch = 236645134.950778;//236576160.073777;
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -140,19 +140,11 @@ int main( )
 
     // Give Mars a more detailed environment
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
-
-//    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings =
-//            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-//                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-            boost::make_shared< TabulatedAtmosphereSettings >(
+    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< TabulatedAtmosphereSettings >(
                 tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
-//    std::cerr << "Full atmosphere is OFF." << std::endl;
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
-//    std::cerr << "Sun gravity is OFF." << std::endl;
-//    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
 
     // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
@@ -179,8 +171,10 @@ int main( )
 
     // Define initial translational state
     Eigen::Vector6d translationalInitialState;
-    translationalInitialState << 3812.24398415264e3, -441.545252133481e3, -1139.60147509625e3,
-            -843.984151288834, 477.226994880592, -3008.41255051917;
+//    translationalInitialState << 3812.24398415264e3, -441.545252133481e3, -1139.60147509625e3,
+//            -843.984151288834, 477.226994880592, -3008.41255051917;
+    translationalInitialState << 3767.41674228105e3, -331.150263609885e3, -858.558372592595e3,
+            -670.488615319951, 498.022027010077, -3134.38840488134;
 
     // Simulation times
     const bool useUnscentedKalmanFilter = true;
@@ -202,14 +196,19 @@ int main( )
 
     // Initial conditions
     Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
-    initialEstimatedStateVector.segment( 0, 6 ) << 3812.25089656191e3, -441.539044397109e3, -1139.60489393642e3,
-            -844.01409852198, 477.260913679265, -3008.41595833966;
+//    initialEstimatedStateVector.segment( 0, 6 ) << 3812.25089656191e3, -441.539044397109e3, -1139.60489393642e3,
+//            -844.01409852198, 477.260913679265, -3008.41595833966;
+    initialEstimatedStateVector.segment( 0, 6 ) << 3767.41674228105e3, -331.150263609885e3, -858.558372592595e3,
+            -670.488615319951, 498.022027010077, -3134.38840488134;
     initialEstimatedStateVector.segment( 6, 3 ) << -0.000123974, 5.23187e-06, 9.7221e-06;
 
     Eigen::Vector9d diagonalOfEstimatedStateCovarianceMatrix;
-    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 229.965913826467 ),
-            Eigen::Vector3d::Constant( 90.7673829283042 ),
-            Eigen::Vector3d::Constant( 9.03047456368276e-05 );
+//    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 229.965913826467 ),
+//            Eigen::Vector3d::Constant( 90.7673829283042 ),
+//            Eigen::Vector3d::Constant( 9.03047456368276e-05 );
+    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 224.044762286642 ),
+            Eigen::Vector3d::Constant( 867.058861578783 ),
+            Eigen::Vector3d::Constant( 0.000866605634321052 );
     Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = diagonalOfEstimatedStateCovarianceMatrix.asDiagonal( );
 
     // Define instrument accuracy
@@ -237,13 +236,10 @@ int main( )
     // System and measurment uncertainties
     const double positionStandardDeviation = 1.0e2;
     const double translationalVelocityStandardDeviation = 1.0e-1;
-    const double attitudeStandardDeviation = 1.0e-4;
     Eigen::Vector9d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
-//            Eigen::Vector4d::Constant( std::pow( attitudeStandardDeviation, 2 ) ),
-//            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) );
     Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
     Eigen::Matrix3d measurementUncertainty = 10.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) ).asDiagonal( );
@@ -283,10 +279,10 @@ int main( )
     switch ( selectedOnboardAtmosphereModel )
     {
     case exponential_atmosphere_model:
-        vectorOfModelSpecificParameters = { 115310.481732592, 3.00847858579386e-08, 5508.51947283614 };
+        vectorOfModelSpecificParameters = { 132079.415180189, 3.61196487735855e-09, 7262.94105048617 };
         break;
     case three_term_atmosphere_model:
-        vectorOfModelSpecificParameters = { 115310.481732592, 3.00847858579386e-08, 5508.51947283614,
+        vectorOfModelSpecificParameters = { 132079.415180189, 3.61196487735855e-09, 7262.94105048617,
                                             -1.11670365150607, 0.185899133123822, 0.129611102672518 };
         break;
     default:
@@ -382,12 +378,8 @@ int main( )
                 "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
 
     // Set aerodynamic coefficient and radiation pressure settings
-//    std::cerr << "Full aerodynamics are OFF." << std::endl;
     bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
                     createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
-//                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
-//                                                           referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
-//                                                       "Satellite" ) );
     bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
                                                                radiationPressureSettings, "Satellite", bodyMap ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
@@ -401,7 +393,6 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-//    std::cerr << "Full Mars gravity is OFF." << std::endl;
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
@@ -410,7 +401,6 @@ int main( )
             accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
         }
     }
-//    std::cerr << "Solar radiation is OFF." << std::endl;
     accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 

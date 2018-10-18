@@ -243,10 +243,10 @@ target_link_libraries(application_ThesisTransOnlyReduced ${TUDAT_APPLICATION_PRO
 #target_link_libraries(application_ThesisTransGuidOnly ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
 #    ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
 
-#add_executable(application_ThesisTransOnlyIMAN "${SRCROOT}/thesisTransOnlyIMAN.cpp")
-#setup_executable_target(application_ThesisTransOnlyIMAN "${SRCROOT}")
-#target_link_libraries(application_ThesisTransOnlyIMAN ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
-#    ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
+add_executable(application_ThesisTransOnlyIMAN "${SRCROOT}/thesisTransOnlyIMAN.cpp")
+setup_executable_target(application_ThesisTransOnlyIMAN "${SRCROOT}")
+target_link_libraries(application_ThesisTransOnlyIMAN ${TUDAT_APPLICATION_PROPAGATION_LIBRARIES}
+    ${TUDAT_APPLICATION_ESTIMATION_LIBRARIES} ${Boost_LIBRARIES})
 
 #add_executable(application_ThesisTransOnlyAltimeter "${SRCROOT}/thesisTransOnlyAltimeter.cpp")
 #setup_executable_target(application_ThesisTransOnlyAltimeter "${SRCROOT}")

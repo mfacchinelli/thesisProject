@@ -20,6 +20,8 @@
 #include "Tudat/Mathematics/Filters/createFilter.h"
 #include "Tudat/Astrodynamics/Propagators/rotationalMotionQuaternionsStateDerivative.h"
 
+#include "Tudat/Astrodynamics/Propagators/imanRmsMethod.h"
+
 #include "Tudat/Astrodynamics/SystemModels/controlSystem.h"
 #include "Tudat/Astrodynamics/SystemModels/guidanceSystem.h"
 #include "Tudat/Astrodynamics/SystemModels/instrumentsModel.h"
@@ -48,6 +50,8 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
 
     return outputPath;
 }
+
+bool tudat::propagators::IMAN_RMS_ANALYSIS;
 
 //! Class to keep attitude constant.
 class AerobrakingAerodynamicGuidance: public tudat::aerodynamics::AerodynamicGuidance
@@ -91,13 +95,33 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
+    IMAN_RMS_ANALYSIS = false;
+
     // Initial conditions settings:
     //      0 -> high eccentricity
     //      1 -> low eccentricity
-    const unsigned int initialConditions = 1;
+    const unsigned int initialConditions = 0;
+
+    // Output path
+    std::string outputPath;
+    switch ( initialConditions )
+    {
+    case 0:
+        outputPath = getOutputPath( "high_ecc" );
+        break;
+    case 1:
+        outputPath = getOutputPath( "low_ecc" );
+        break;
+    }
+
+    // Environment settings:
+    bool useFullAerodynamics = true;
+    bool useFullAtmosphere = true;
+    bool useFullGravity = true;
+    bool useUnscentedKalmanFilter = false;
 
     // Save settings:
-    bool extractFilterResults = false;
+    bool extractFilterResults = true;
     bool extractMeasurementResults = false;
     bool extractAtmosphericData = false;
     bool extractManeuverInformation = false;
@@ -155,13 +179,19 @@ int main( )
     // Give Mars a more detailed environment
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
-    std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings =
-            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-//            boost::make_shared< TabulatedAtmosphereSettings >(
-//                tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
-    std::cerr << "Full atmosphere is OFF." << std::endl;
+    if ( useFullAtmosphere )
+    {
+        bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< TabulatedAtmosphereSettings >(
+                    tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
+    }
+    else
+    {
+        std::cerr << "Full atmosphere is OFF." << std::endl;
+        std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0 };
+        bodySettings[ "Mars" ]->atmosphereSettings =
+                boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
+                    exponential_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
+    }
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
@@ -224,6 +254,7 @@ int main( )
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
             simulationConstantStepSizeDuringAtmosphericPhase * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshRate = 1.0 / onboardComputerRefreshStepSize; // Hertz
+    const double onboardComputerRefreshRateDuringAtmosphericPhase = 1.0 / onboardComputerRefreshStepSizeDuringAtmosphericPhase; // Hertz
 
     // Save frequency
     const unsigned int saveFrequency = std::max< unsigned int >( 2 * static_cast< unsigned int >( onboardComputerRefreshRate ), 1 );
@@ -233,18 +264,28 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
-    Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
+    Eigen::Vector10d initialEstimatedStateVector = Eigen::Vector10d::Zero( );
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
+    initialEstimatedStateVector[ 9 ] = 1.9;
+    Eigen::Matrix10d initialEstimatedStateCovarianceMatrix = Eigen::Matrix10d::Identity( );
 
     // Define instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
     const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
-    const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
+    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
+
+    Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+    const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
+            Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+
+    // Reduce accelerometer noise
+    accelerometerAccuracy *= 1.0e-1; // thanks to smoothing process
+    accelerometerAccuracyAtmosphericPhase *= 1.0e-1; // thanks to smoothing process
 
     // Define Deep Space Network accuracy
     const double deepSpaceNetworkPositionAccuracy = 10.0;
@@ -252,16 +293,14 @@ int main( )
     const double deepSpaceNetworkLightTimeAccuracy = 1.0e-3;
 
     // System and measurment uncertainties
-    const double positionStandardDeviation = 1.0e0;
-    const double translationalVelocityStandardDeviation = 1.0e-3;
-    const double attitudeStandardDeviation = 1.0e-4;
-    Eigen::Vector9d diagonalOfSystemUncertainty;
+    const double positionStandardDeviation = 1.0e2;
+    const double translationalVelocityStandardDeviation = 1.0e-1;
+    Eigen::Vector10d diagonalOfSystemUncertainty;
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
-            Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
-//            Eigen::Vector4d::Constant( std::pow( attitudeStandardDeviation, 2 ) ),
-//            Eigen::Vector3d::Constant( std::pow( gyroscopeBiasStandardDeviation, 2 ) );
-    Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+            Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
+            std::pow( 1.0e-1, 2 );
+    Eigen::Matrix10d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
     Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e2, 2 ) ).asDiagonal( );
 
@@ -295,8 +334,19 @@ int main( )
     onboardBodySettings[ "Mars" ]->rotationModelSettings->resetOriginalFrame( "J2000" );
     onboardBodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
-    AvailableConstantTemperatureAtmosphereModels selectedOnboardAtmosphereModel = three_term_atmosphere_model;
-    std::vector< double > vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+    AvailableConstantTemperatureAtmosphereModels selectedOnboardAtmosphereModel = exponential_atmosphere_model;
+    std::vector< double > vectorOfModelSpecificParameters;
+    switch ( selectedOnboardAtmosphereModel )
+    {
+    case exponential_atmosphere_model:
+        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0 };
+        break;
+    case three_term_atmosphere_model:
+        vectorOfModelSpecificParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
+        break;
+    default:
+        throw std::runtime_error( "Error in simulation. Selected atmosphere model not supported." );
+    }
     onboardBodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
                 selectedOnboardAtmosphereModel, 215.0, 197.0, 1.3, vectorOfModelSpecificParameters );
 
@@ -334,18 +384,19 @@ int main( )
     boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
 
     // Create unscented Kalman filter settings object for navigation
-    bool useUnscentedKalmanFilter = false;
-    boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
-            boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
     boost::shared_ptr< FilterSettings< > > filteringSettings;
     if ( useUnscentedKalmanFilter )
     {
+        boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                boost::make_shared< IntegratorSettings< > >( euler, simulationStartEpoch, onboardComputerRefreshStepSize );
         filteringSettings = boost::make_shared< UnscentedKalmanFilterSettings< > >(
                     systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                     initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
     }
     else
     {
+        boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
+                boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
         filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
                     systemUncertainty, measurementUncertainty, onboardComputerRefreshStepSize, simulationStartEpoch,
                     initialEstimatedStateVector, initialEstimatedStateCovarianceMatrix, filterIntegratorSettings );
@@ -385,12 +436,19 @@ int main( )
                 "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
 
     // Set aerodynamic coefficient and radiation pressure settings
-//    std::cerr << "Full aerodynamics are OFF." << std::endl;
-    bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
-                    createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
-//                createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
-//                                                           referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
-//                                                       "Satellite" ) );
+    if ( useFullAerodynamics )
+    {
+        bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
+                        createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
+    }
+    else
+    {
+        std::cerr << "Full aerodynamics are OFF." << std::endl;
+        bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
+                    createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
+                                                               referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
+                                                           "Satellite" ) );
+    }
     bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
                                                                radiationPressureSettings, "Satellite", bodyMap ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
@@ -404,8 +462,15 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-//    std::cerr << "Full Mars gravity is OFF." << std::endl;
-    accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
+    if ( useFullGravity )
+    {
+        accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
+    }
+    else
+    {
+        std::cerr << "Full Mars gravity is OFF." << std::endl;
+        accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 0, 0 ) );
+    }
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
         if ( bodiesToCreate.at( i ) != "Mars" )
@@ -589,6 +654,8 @@ int main( )
                     // Change step size
                     integratorSettings->initialTimeStep_ = simulationConstantStepSizeDuringAtmosphericPhase;
                     navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSizeDuringAtmosphericPhase );
+                    onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracyAtmosphericPhase,
+                                                                                             gyroscopeAccuracyAtmosphericPhase );
 
                     // Change altitude termination settings
                     altitudeTerminationSettings->limitValue_ = 1.05 * marsPropagationAtmosphericInterfaceAltitude;
@@ -598,6 +665,8 @@ int main( )
                     // Change step size
                     integratorSettings->initialTimeStep_ = simulationConstantStepSize;
                     navigationSystem->resetNavigationRefreshStepSize( onboardComputerRefreshStepSize );
+                    onboardInstruments->resetInertialMeasurementUnitRandomNoiseDistribution( accelerometerAccuracy,
+                                                                                             gyroscopeAccuracy );
 
                     // Change altitude termination settings
                     altitudeTerminationSettings->limitValue_ = 0.95 * marsPropagationAtmosphericInterfaceAltitude;
@@ -649,18 +718,6 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // Output path
-    std::string outputPath;
-    switch ( initialConditions )
-    {
-    case 0:
-        outputPath = getOutputPath( "high_ecc" );
-        break;
-    case 1:
-        outputPath = getOutputPath( "low_ecc" );
-        break;
-    }
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
