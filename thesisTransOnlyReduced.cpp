@@ -106,7 +106,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 236645134.950778;//236576160.073777;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -216,14 +216,18 @@ int main( )
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
     const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
-    const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
+    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
 
-    const Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+    Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
             Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
     const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
             Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+
+    // Reduce accelerometer noise
+    accelerometerAccuracy *= 1.0e-1; // thanks to smoothing process
+    accelerometerAccuracyAtmosphericPhase *= 1.0e-1; // thanks to smoothing process
 
     // Define Deep Space Network accuracy
     const double deepSpaceNetworkPositionAccuracy = 10.0;

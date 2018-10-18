@@ -93,9 +93,15 @@ int main( )
 
     // Save settings
     bool extractFilterResults = true;
-    bool extractMeasurementResults = false;
+    bool extractMeasurementResults = true;
     bool extractAtmosphericData = true;
     bool extractManeuverInformation = true;
+
+    // Filter settings
+    const bool useUnscentedKalmanFilter = true;
+
+    // Output path
+    std::string outputPath = getOutputPath( );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -106,7 +112,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -183,7 +189,6 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const bool useUnscentedKalmanFilter = true;
     const double simulationConstantStepSize = 0.1; // 10 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.02; // 50 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
@@ -210,14 +215,18 @@ int main( )
     const double accelerometerScaleFactorStandardDeviation = 1.0e-4;
     const double gyroscopeBiasStandardDeviation = 5.0e-9;
     const double gyroscopeScaleFactorStandardDeviation = accelerometerScaleFactorStandardDeviation;
-    const Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
+    Eigen::Vector3d accelerometerAccuracy = Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d gyroscopeAccuracy = Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRate ) );
     const Eigen::Vector3d starTrackerAccuracy = Eigen::Vector3d::Constant( 20.0 / 3600.0 );
 
-    const Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
+    Eigen::Vector3d accelerometerAccuracyAtmosphericPhase =
             Eigen::Vector3d::Constant( 2.0e-4 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
     const Eigen::Vector3d gyroscopeAccuracyAtmosphericPhase =
             Eigen::Vector3d::Constant( 3.0e-7 * std::sqrt( onboardComputerRefreshRateDuringAtmosphericPhase ) );
+
+    // Reduce accelerometer noise
+    accelerometerAccuracy *= 1.0e-1; // thanks to smoothing process
+    accelerometerAccuracyAtmosphericPhase *= 1.0e-1; // thanks to smoothing process
 
     // Define Deep Space Network accuracy
     const double deepSpaceNetworkPositionAccuracy = 10.0;
@@ -676,9 +685,6 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // Output path
-    std::string outputPath = getOutputPath( );
 
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
