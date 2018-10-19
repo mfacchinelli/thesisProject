@@ -570,7 +570,7 @@ int main( )
             vectorOfTerminationConditions = hybridTerminationDetails->getWasConditionMetWhenStopping( );
             if ( vectorOfTerminationConditions.at( 0 ) ) // onboard computer
             {
-                if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::periapsis_raise_phase ) )
+                if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::termination_phase ) )
                 {
                     // Add estimated apoapsis maneuver to state
                     finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
