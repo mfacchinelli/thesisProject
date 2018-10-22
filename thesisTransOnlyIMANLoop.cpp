@@ -49,6 +49,8 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
+unsigned int tudat::propagators::IMAN_ANALYSIS_INDEX;
+
 //! Class to keep attitude constant.
 class AerobrakingAerodynamicGuidance: public tudat::aerodynamics::AerodynamicGuidance
 {
@@ -95,6 +97,8 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    IMAN_ANALYSIS_INDEX = 2;
 
     // Load Spice kernels
     spice_interface::loadStandardSpiceKernels( );
@@ -178,9 +182,9 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const bool useUnscentedKalmanFilter = true;
-    const double simulationConstantStepSize = 0.1; // 10 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.02; // 50 Hz
+    const bool useUnscentedKalmanFilter = false;
+    const double simulationConstantStepSize = 0.05; // 20 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
@@ -196,9 +200,10 @@ int main( )
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Initial conditions
-    Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
+    Eigen::Vector10d initialEstimatedStateVector = Eigen::Vector10d::Zero( );
     initialEstimatedStateVector.segment( 0, 6 ) = translationalInitialState;
-    Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = Eigen::Matrix9d::Identity( );
+    initialEstimatedStateVector[ 9 ] = 1.9;
+    Eigen::Matrix10d initialEstimatedStateCovarianceMatrix = Eigen::Matrix10d::Identity( );
 
     // Define instrument accuracy
     const double accelerometerBiasStandardDeviation = 1.0e-4;
@@ -335,11 +340,12 @@ int main( )
                           << std::endl;
 
                 // Define uncertainties
-                Eigen::Vector9d diagonalOfSystemUncertainty;
+                Eigen::Vector10d diagonalOfSystemUncertainty;
                 diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, p ), 2 ) ),
                         Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, v ), 2 ) ),
-                        Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
-                Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
+                        Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
+                        std::pow( 1.0e-1, 2 );
+                Eigen::Matrix10d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
                 Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( std::pow( 10.0, m ), 2 ) ).asDiagonal( );
 
@@ -361,7 +367,6 @@ int main( )
                 }
                 else
                 {
-                    measurementUncertainty *= 1.0e7;
                     boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
                             boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
                     filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(

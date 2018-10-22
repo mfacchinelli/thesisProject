@@ -51,7 +51,7 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
-bool tudat::propagators::IMAN_RMS_ANALYSIS;
+unsigned int tudat::propagators::IMAN_ANALYSIS_INDEX;
 
 //! Class to keep attitude constant.
 class AerobrakingAerodynamicGuidance: public tudat::aerodynamics::AerodynamicGuidance
@@ -99,7 +99,7 @@ int main( )
     ///////////////////////            SETTINGS LOOP                 //////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    IMAN_RMS_ANALYSIS = true;
+    IMAN_ANALYSIS_INDEX = 1;
 
     // Initial conditions settings:
     //      0 -> high eccentricity

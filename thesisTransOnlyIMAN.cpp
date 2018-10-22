@@ -51,7 +51,7 @@ static inline std::string getOutputPath( const std::string& extraDirectory = "" 
     return outputPath;
 }
 
-bool tudat::propagators::IMAN_RMS_ANALYSIS;
+unsigned int tudat::propagators::IMAN_ANALYSIS_INDEX;
 
 //! Class to keep attitude constant.
 class AerobrakingAerodynamicGuidance: public tudat::aerodynamics::AerodynamicGuidance
@@ -95,7 +95,7 @@ int main( )
     using namespace tudat::system_models;
     using namespace tudat::unit_conversions;
 
-    IMAN_RMS_ANALYSIS = false;
+    IMAN_ANALYSIS_INDEX = 0;
 
     // Initial conditions settings:
     //      0 -> high eccentricity
@@ -247,7 +247,7 @@ int main( )
                                                                                            marsGravitationalParameter );
 
     // Simulation times
-    const double simulationConstantStepSize = 0.05; // 10 Hz
+    const double simulationConstantStepSize = 0.05; // 20 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
