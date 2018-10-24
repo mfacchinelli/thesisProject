@@ -170,8 +170,8 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 25946932.3;
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.8651912;
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );

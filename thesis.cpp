@@ -123,17 +123,11 @@ int main( )
     bodySettings[ "Mars" ]->gravityFieldSettings = boost::make_shared< FromFileSphericalHarmonicsGravityFieldSettings >( jgmro120d );
 
     std::vector< double > vectorOfAtmosphereParameters = { 115.0e3, 2.424e-08, 6533.0, -1.0, 0.0, 0.0 };
-    bodySettings[ "Mars" ]->atmosphereSettings =
-//            boost::make_shared< CustomConstantTemperatureAtmosphereSettings >(
-//                three_term_atmosphere_model, 215.0, 197.0, 1.3, vectorOfAtmosphereParameters );
-            boost::make_shared< TabulatedAtmosphereSettings >(
+    bodySettings[ "Mars" ]->atmosphereSettings = boost::make_shared< TabulatedAtmosphereSettings >(
                 tabulatedAtmosphereFiles, atmosphereIndependentVariables, atmosphereDependentVariables, boundaryConditions );
-//    std::cerr << "Full atmosphere is OFF." << std::endl;
 
     // Give Earth zero gravity field such that ephemeris is created, but no acceleration
     bodySettings[ "Earth" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
-//    std::cerr << "Sun gravity is OFF." << std::endl;
-//    bodySettings[ "Sun" ]->gravityFieldSettings = boost::make_shared< CentralGravityFieldSettings >( 0.0 );
 
     // Create body objects
     NamedBodyMap bodyMap = createBodies( bodySettings );
@@ -160,8 +154,8 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;//4708500.0;//
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;//0.252203;//
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -176,8 +170,8 @@ int main( )
 
     // Find the trajectory x-axis unit vector
     Eigen::Vector3d initialRadialVector = translationalInitialState.segment( 0, 3 );
-    Eigen::Vector3d xUnitVector = ( translationalInitialState.segment( 3, 3 ) -
-                                    7.07763225880808e-05 * Eigen::Vector3d::UnitZ( ).cross( initialRadialVector ) ).normalized( );
+    Eigen::Vector3d xUnitVector = - ( translationalInitialState.segment( 3, 3 ) -
+                                      7.07763225880808e-05 * Eigen::Vector3d::UnitZ( ).cross( initialRadialVector ) ).normalized( );
     directionCosineMatrix.col( 0 ) = xUnitVector;
 
     // Find trajectory z-axis unit vector
@@ -261,9 +255,9 @@ int main( )
     onboardAerodynamicCoefficients[ 0 ] = 1.9;
 
     // Controller gains
-    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 1.0e-2 );
+    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 1.0e-5 );
     Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );
-    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );
+    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.05 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
@@ -383,12 +377,8 @@ int main( )
                 "Sun", referenceAreaRadiation, radiationPressureCoefficient, occultingBodies );
 
     // Set aerodynamic coefficient and radiation pressure settings
-//    std::cerr << "Full aerodynamics are OFF." << std::endl;
     bodyMap[ "Satellite" ]->setAerodynamicCoefficientInterface(
                 createAerodynamicCoefficientInterface( aerodynamicCoefficientSettings, "Satellite" ) );
-//    createAerodynamicCoefficientInterface( boost::make_shared< ConstantAerodynamicCoefficientSettings >(
-//                                               referenceAreaAerodynamic, onboardAerodynamicCoefficients, true, true ),
-//                                           "Satellite" ) );
     bodyMap[ "Satellite" ]->setRadiationPressureInterface( "Sun", createRadiationPressureInterface(
                                                                radiationPressureSettings, "Satellite", bodyMap ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
@@ -402,7 +392,6 @@ int main( )
 
     // Define acceleration settings
     std::map< std::string, std::vector< boost::shared_ptr< AccelerationSettings > > > accelerationsOfSatellite;
-//    std::cerr << "Full Mars gravity is OFF." << std::endl;
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< SphericalHarmonicAccelerationSettings >( 21, 21 ) );
     for ( unsigned int i = 0; i < bodiesToCreate.size( ); i++ )
     {
@@ -411,7 +400,6 @@ int main( )
             accelerationsOfSatellite[ bodiesToCreate.at( i ) ].push_back( boost::make_shared< AccelerationSettings >( central_gravity ) );
         }
     }
-    //    std::cerr << "Solar radiation is OFF." << std::endl;
     accelerationsOfSatellite[ "Sun" ].push_back( boost::make_shared< AccelerationSettings >( cannon_ball_radiation_pressure ) );
     accelerationsOfSatellite[ "Mars" ].push_back( boost::make_shared< AccelerationSettings >( aerodynamic ) );
 
@@ -780,6 +768,10 @@ int main( )
     writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", outputPath );
     writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
     writeDataMapToTextFile( rotationalEstimationResult, "rotationalEstimated.dat", outputPath );
+
+    // Extract commanded quaternion states
+    std::map< unsigned int, Eigen::Vector4d > historyOfCommandedQuaternionStates = controlSystem->getHistoryOfCommandedQuaternions( );
+    writeDataMapToTextFile( historyOfCommandedQuaternionStates, "commandedQuaternions.dat", outputPath );
 
     // Filter results
     if ( extractFilterResults )

@@ -102,6 +102,7 @@ int main( )
 
     // Output path
     std::string outputPath = getOutputPath( );
+//    std::cerr << "Output path is ALTERED." << std::endl;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -803,7 +804,7 @@ int main( )
 
         // Write other data to file
         writeDataMapToTextFile( accelerometerMeasurements, "accelerometerMeasurements.dat", outputPath );
-        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
+        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedMeasurements.dat", outputPath );
     }
 
     // Extract atmosphere data
