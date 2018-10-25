@@ -569,18 +569,9 @@ int main( )
             vectorOfTerminationConditions = hybridTerminationDetails->getWasConditionMetWhenStopping( );
             if ( vectorOfTerminationConditions.at( 0 ) ) // onboard computer
             {
-                if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::termination_phase ) )
-                {
-                    // Add estimated apoapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                }
-                else
-                {
-                    // Add estimated periapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
-                }
+                // Add estimated apo- or periapsis maneuver to state
+                finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
             }
             else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
             {

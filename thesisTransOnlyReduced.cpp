@@ -105,7 +105,7 @@ int main( )
     spice_interface::loadStandardSpiceKernels( );
 
     // Set simulation time settings
-    const double simulationStartEpoch = 236645134.950778;//236576160.073777;
+    const double simulationStartEpoch = 240236817.318471;
     const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
@@ -171,10 +171,8 @@ int main( )
 
     // Define initial translational state
     Eigen::Vector6d translationalInitialState;
-//    translationalInitialState << 3812.24398415264e3, -441.545252133481e3, -1139.60147509625e3,
-//            -843.984151288834, 477.226994880592, -3008.41255051917;
-    translationalInitialState << 3767.41674228105e3, -331.150263609885e3, -858.558372592595e3,
-            -670.488615319951, 498.022027010077, -3134.38840488134;
+    translationalInitialState << 3644.75742658429e3, -332.263472717885e3, -930.376098348482e3,
+            -763.753459625105, 513.669840060671, -3175.83681006811;
 
     // Simulation times
     const bool useUnscentedKalmanFilter = true;
@@ -196,19 +194,14 @@ int main( )
 
     // Initial conditions
     Eigen::Vector9d initialEstimatedStateVector = Eigen::Vector9d::Zero( );
-//    initialEstimatedStateVector.segment( 0, 6 ) << 3812.25089656191e3, -441.539044397109e3, -1139.60489393642e3,
-//            -844.01409852198, 477.260913679265, -3008.41595833966;
-    initialEstimatedStateVector.segment( 0, 6 ) << 3767.41674228105e3, -331.150263609885e3, -858.558372592595e3,
-            -670.488615319951, 498.022027010077, -3134.38840488134;
+    initialEstimatedStateVector.segment( 0, 6 ) << 3644.68216405946e3, -332.270771569665e3, -930.483024303236e3,
+            -763.904377063278, 513.716057780102, -3176.10186867566;
     initialEstimatedStateVector.segment( 6, 3 ) << -0.000123974, 5.23187e-06, 9.7221e-06;
 
     Eigen::Vector9d diagonalOfEstimatedStateCovarianceMatrix;
-//    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 229.965913826467 ),
-//            Eigen::Vector3d::Constant( 90.7673829283042 ),
-//            Eigen::Vector3d::Constant( 9.03047456368276e-05 );
-    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 224.044762286642 ),
-            Eigen::Vector3d::Constant( 867.058861578783 ),
-            Eigen::Vector3d::Constant( 0.000866605634321052 );
+    diagonalOfEstimatedStateCovarianceMatrix << Eigen::Vector3d::Constant( 224044.846961632 ),
+            Eigen::Vector3d::Constant( 867.058557773174 ),
+            Eigen::Vector3d::Constant( 0.000866607107624187 );
     Eigen::Matrix9d initialEstimatedStateCovarianceMatrix = diagonalOfEstimatedStateCovarianceMatrix.asDiagonal( );
 
     // Define instrument accuracy
@@ -573,14 +566,14 @@ int main( )
                 if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::termination_phase ) )
                 {
                     // Add estimated apoapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
                 }
                 else
                 {
                     // Add estimated periapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
                 }
             }
             else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
@@ -659,8 +652,14 @@ int main( )
     // Propagate for one final orbit, to check orbit configuration
     if ( ( ( simulationEndEpoch - simulationStartEpoch ) / physical_constants::JULIAN_DAY ) > 50.0 )
     {
+        // Compute orbital period
+        Eigen::Vector6d finalKeplerianState = convertCartesianToKeplerianElements< double >(
+                    fullIntegrationResult.rbegin( )->second, marsGravitationalParameter );
+        double orbitalPeriod = computeKeplerOrbitalPeriod( finalKeplerianState[ 0 ], marsGravitationalParameter );
+
+        // Set propagation time to one extra orbit
         terminationSettings = boost::make_shared< PropagationTimeTerminationSettings >(
-                    integratorSettings->initialTime_ + physical_constants::JULIAN_DAY );
+                    integratorSettings->initialTime_ + orbitalPeriod );
         boost::dynamic_pointer_cast< MultiTypePropagatorSettings< > >( propagatorSettings )->resetTerminationSettings( terminationSettings );
         dynamicsSimulator = boost::make_shared< SingleArcDynamicsSimulator< > >( bodyMap, integratorSettings, propagatorSettings, false );
         dynamicsSimulator->integrateEquationsOfMotion( propagatorSettings->getInitialStates( ) );

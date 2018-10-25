@@ -678,8 +678,8 @@ int main( )
                     if ( vectorOfTerminationConditions.at( 0 ) ) // onboard computer
                     {
                         // Add estimated apoapsis maneuver to state
-                        finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                        currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                        finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                        currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
                     }
                     else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
                     {

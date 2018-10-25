@@ -579,14 +579,14 @@ int main( )
                 if ( !guidanceSystem->getIsAerobrakingPhaseActive( GuidanceSystem::termination_phase ) )
                 {
                     // Add estimated apoapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApoapsisManeuver( );
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
                 }
                 else
                 {
                     // Add estimated periapsis maneuver to state
-                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
-                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledPeriapsisManeuver( );
+                    finalPropagatedState.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
+                    currentFullIntegrationResult.rbegin( )->second.segment( 3, 3 ) += controlSystem->getScheduledApsisManeuver( );
                 }
             }
             else if ( vectorOfTerminationConditions.at( 1 ) ) // altitude
