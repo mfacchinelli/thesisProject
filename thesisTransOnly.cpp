@@ -94,7 +94,7 @@ int main( )
     // Save settings
     bool extractFilterResults = true;
     bool extractMeasurementResults = true;
-    bool extractAtmosphericData = true;
+    bool extractNavigationEstimationData = true;
     bool extractManeuverInformation = true;
 
     // Filter settings
@@ -102,7 +102,6 @@ int main( )
 
     // Output path
     std::string outputPath = getOutputPath( );
-//    std::cerr << "Output path is ALTERED." << std::endl;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -113,7 +112,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -178,8 +177,8 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;//4708500.0;//
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;//0.252203;//
+    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
+    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
     initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
     initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
     initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
@@ -339,7 +338,7 @@ int main( )
     }
     else
     {
-        measurementUncertainty *= 1.0e7;
+        measurementUncertainty *= 1.0e3;
         boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
                 boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
         filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
@@ -387,7 +386,7 @@ int main( )
                                                                radiationPressureSettings, "Satellite", bodyMap ) );
     bodyMap[ "Satellite" ]->setControlSystem( controlSystem );
 
-    // Finalize body creation.
+    // Finalize body creation
     setGlobalFrameBodyEphemerides( bodyMap, "SSB", "J2000" );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -799,8 +798,11 @@ int main( )
     }
 
     // Extract atmosphere data
-    if ( extractAtmosphericData )
+    if ( extractNavigationEstimationData )
     {
+        std::map< unsigned int, Eigen::Vector6d > changesInKeplerianElements =
+                navigationSystem->getHistoryOfEstimatedChangesInKeplerianElements( );
+        writeDataMapToTextFile( changesInKeplerianElements, "pteEstimates.dat", outputPath );
         std::map< unsigned int, Eigen::VectorXd > atmosphericParameters = navigationSystem->getHistoryOfEstimatedAtmosphereParameters( );
         writeDataMapToTextFile( atmosphericParameters, "atmosphericParameters.dat", outputPath );
     }
