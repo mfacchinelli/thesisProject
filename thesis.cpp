@@ -75,8 +75,14 @@ int main( )
     // Save settings
     bool extractFilterResults = true;
     bool extractMeasurementResults = false;
-    bool extractAtmosphericData = true;
+    bool extractNavigationEstimationData = true;
     bool extractManeuverInformation = true;
+
+    // Filter settings
+    const bool useUnscentedKalmanFilter = true;
+
+    // Output path
+    std::string outputPath = getOutputPath( );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -87,7 +93,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 1.0e2;//1.4 * physical_constants::JULIAN_DAY; // 0.1125
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -188,7 +194,6 @@ int main( )
     rotationalInitialState.segment( 0, 4 ) = initialQuaternion;
 
     // Simulation times
-    const bool useUnscentedKalmanFilter = true;
     const double simulationConstantStepSize = 0.2; // 5 Hz
     const double simulationConstantStepSizeDuringAtmosphericPhase = 0.02; // 50 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
@@ -246,7 +251,7 @@ int main( )
     Eigen::Matrix16d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
     Eigen::Vector7d diagonalOfMeasurementUncertainty;
-    diagonalOfMeasurementUncertainty.segment( 0, 3 ) = 10.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) );
+    diagonalOfMeasurementUncertainty.segment( 0, 3 ) = 100.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) );
     diagonalOfMeasurementUncertainty.segment( 3, 4 ) = Eigen::Vector4d::Constant( 1.0e-6 ); // starTrackerAccuracy <<<<----
     Eigen::Matrix7d measurementUncertainty = diagonalOfMeasurementUncertainty.asDiagonal( );
 
@@ -332,7 +337,7 @@ int main( )
     }
     else
     {
-        measurementUncertainty *= 1.0e7;
+        measurementUncertainty *= 1.0e3;
         boost::shared_ptr< IntegratorSettings< > > filterIntegratorSettings =
                 boost::make_shared< IntegratorSettings< > >( rungeKutta4, simulationStartEpoch, onboardComputerRefreshStepSize );
         filteringSettings = boost::make_shared< ExtendedKalmanFilterSettings< > >(
@@ -359,15 +364,19 @@ int main( )
     std::map< int, std::string > aerodynamicForceCoefficientFiles;
     std::map< int, std::string > aerodynamicMomentCoefficientFiles;
     aerodynamicForceCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MRODragCoefficients.txt";
+    aerodynamicForceCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROSideCoefficients.txt";
     aerodynamicForceCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROLiftCoefficients.txt";
-    aerodynamicMomentCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROMomentCoefficients.txt";
+    aerodynamicMomentCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MROXMomentCoefficients.txt";
+    aerodynamicMomentCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROYMomentCoefficients.txt";
+    aerodynamicMomentCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROZMomentCoefficients.txt";
 
     // Create aerodynamic coefficient settings
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, aerodynamicMomentCoefficientFiles, referenceLengthAerodynamic,
                 referenceAreaAerodynamic, referenceLengthAerodynamic, momentReferencePoint,
-                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, angle_of_sideslip_dependent,
+                                                                            altitude_dependent } );
 
     // Constant radiation pressure variables
     std::vector< std::string > occultingBodies;
@@ -694,9 +703,6 @@ int main( )
     ///////////////////////             RETRIEVE AND SAVE RESULTS           ///////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Output path
-    std::string outputPath = getOutputPath( );
-
     // Compute map of Kepler elements
     Eigen::VectorXd currentFullState;
     Eigen::Vector6d currentCartesianState;
@@ -837,9 +843,12 @@ int main( )
         writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
     }
 
-    // Extract atmosphere data
-    if ( extractAtmosphericData )
+    // Extract navigation data
+    if ( extractNavigationEstimationData )
     {
+        std::map< unsigned int, Eigen::Vector6d > changesInKeplerianElements =
+                navigationSystem->getHistoryOfEstimatedChangesInKeplerianElements( );
+        writeDataMapToTextFile( changesInKeplerianElements, "pteEstimates.dat", outputPath );
         std::map< unsigned int, Eigen::VectorXd > atmosphericParameters = navigationSystem->getHistoryOfEstimatedAtmosphereParameters( );
         writeDataMapToTextFile( atmosphericParameters, "atmosphericParameters.dat", outputPath );
     }

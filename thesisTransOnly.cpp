@@ -245,7 +245,7 @@ int main( )
             Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) );
     Eigen::Matrix9d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
-    Eigen::Matrix3d measurementUncertainty = 10.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) ).asDiagonal( );
+    Eigen::Matrix3d measurementUncertainty = 100.0 * ( positionAccuracy.cwiseProduct( positionAccuracy ) ).asDiagonal( );
 
     // Aerodynamic coefficients
     Eigen::Vector3d onboardAerodynamicCoefficients = Eigen::Vector3d::Zero( );
@@ -364,13 +364,15 @@ int main( )
     // Aerodynamic coefficients from file
     std::map< int, std::string > aerodynamicForceCoefficientFiles;
     aerodynamicForceCoefficientFiles[ 0 ] = getTudatRootPath( ) + "External/MRODragCoefficients.txt";
+    aerodynamicForceCoefficientFiles[ 1 ] = getTudatRootPath( ) + "External/MROSideCoefficients.txt";
     aerodynamicForceCoefficientFiles[ 2 ] = getTudatRootPath( ) + "External/MROLiftCoefficients.txt";
 
     // Create aerodynamic coefficient settings
     boost::shared_ptr< AerodynamicCoefficientSettings > aerodynamicCoefficientSettings =
             readTabulatedAerodynamicCoefficientsFromFiles(
                 aerodynamicForceCoefficientFiles, referenceAreaAerodynamic,
-                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, altitude_dependent } );
+                std::vector< AerodynamicCoefficientsIndependentVariables >{ angle_of_attack_dependent, angle_of_sideslip_dependent,
+                                                                            altitude_dependent } );
 
     // Constant radiation pressure variables
     std::vector< std::string > occultingBodies;
@@ -797,7 +799,7 @@ int main( )
         writeDataMapToTextFile( onboardExpectedMeasurements, "expectedMeasurements.dat", outputPath );
     }
 
-    // Extract atmosphere data
+    // Extract navigation data
     if ( extractNavigationEstimationData )
     {
         std::map< unsigned int, Eigen::Vector6d > changesInKeplerianElements =
