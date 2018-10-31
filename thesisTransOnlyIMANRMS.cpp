@@ -105,9 +105,23 @@ int main( )
     //      0 -> high eccentricity
     //      1 -> low eccentricity
     const unsigned int initialConditions = 1;
-    const bool useUnscentedKalmanFilter = false;
+    const bool simulateLowerHalf = true;
+
+    unsigned int initialSimulation;
+    unsigned int finalSimulation;
+    if ( simulateLowerHalf )
+    {
+        initialSimulation = 0;
+        finalSimulation = 4;
+    }
+    else
+    {
+        initialSimulation = 4;
+        finalSimulation = 8;
+    }
 
     // Onboard comptuer frequencies
+    const bool useUnscentedKalmanFilter = false;
     std::vector< unsigned int > vectorOfRatiosOfOnboardOverSimulatedTimes;
     switch ( initialConditions )
     {
@@ -133,7 +147,7 @@ int main( )
     //      exp - exponential
     //      red - reduced
     //      tab - tabulated
-    for ( unsigned int simulation = 0; simulation < 8; simulation++ )
+    for ( unsigned int simulation = initialSimulation; simulation < finalSimulation; simulation++ )
     {
         for ( unsigned int ratioOfOnboardOverSimulatedTimes : vectorOfRatiosOfOnboardOverSimulatedTimes )
         {
@@ -317,7 +331,7 @@ int main( )
             diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
                     Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
                     Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
-                    std::pow( 1.0e-1, 2 );
+                    std::pow( 1.0e4, 2 );
             Eigen::Matrix10d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
             Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e2, 2 ) ).asDiagonal( );

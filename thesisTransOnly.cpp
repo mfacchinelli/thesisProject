@@ -112,7 +112,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 100.0 * physical_constants::JULIAN_DAY;
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;;//100.0 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;

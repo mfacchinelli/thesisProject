@@ -122,9 +122,9 @@ int main( )
 
     // Save settings:
     bool extractFilterResults = true;
-    bool extractMeasurementResults = false;
-    bool extractAtmosphericData = false;
-    bool extractManeuverInformation = false;
+    bool extractMeasurementResults = true;
+    bool extractAtmosphericData = true;
+    bool extractManeuverInformation = true;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -299,7 +299,7 @@ int main( )
     diagonalOfSystemUncertainty << Eigen::Vector3d::Constant( std::pow( positionStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( translationalVelocityStandardDeviation, 2 ) ),
             Eigen::Vector3d::Constant( std::pow( accelerometerBiasStandardDeviation, 2 ) ),
-            std::pow( 1.0e-1, 2 );
+            std::pow( 1.0e4, 2 );
     Eigen::Matrix10d systemUncertainty = diagonalOfSystemUncertainty.asDiagonal( );
 
     Eigen::Matrix3d measurementUncertainty = Eigen::Vector3d::Constant( std::pow( 1.0e2, 2 ) ).asDiagonal( );
@@ -857,7 +857,7 @@ int main( )
             periapsisCorridorBoundaries[ mapIterator->first ] =
                     ( Eigen::VectorXd( 2 ) << mapIterator->second.first, mapIterator->second.second ).finished( );
         }
-        std::map< unsigned int, double > apoaspsisManeuverMagnitudes = guidanceSystem->getHistoryOfApoapsisManeuverMagnitudes( ).second;
+        std::map< unsigned int, double > apoaspsisManeuverMagnitudes = guidanceSystem->getHistoryOfApsisManeuverMagnitudes( ).second;
         writeDataMapToTextFile( periapsisCorridorBoundaries, "periapsisCorridors.dat", outputPath );
         writeDataMapToTextFile( apoaspsisManeuverMagnitudes, "apoapsisManeuver.dat", outputPath );
     }
