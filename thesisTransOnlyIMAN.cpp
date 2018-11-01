@@ -100,17 +100,17 @@ int main( )
     // Initial conditions settings:
     //      0 -> high eccentricity
     //      1 -> low eccentricity
-    const unsigned int initialConditions = 0;
+    const unsigned int initialConditions = 1;
 
     // Output path
     std::string outputPath;
     switch ( initialConditions )
     {
     case 0:
-        outputPath = getOutputPath( "high_ecc" );
+        outputPath = getOutputPath( "high_ecc_double2" );
         break;
     case 1:
-        outputPath = getOutputPath( "low_ecc" );
+        outputPath = getOutputPath( "low_ecc_doule2" );
         break;
     }
 
@@ -139,10 +139,10 @@ int main( )
     switch ( initialConditions )
     {
     case 0:
-        simulationEndEpoch += 1.4 * physical_constants::JULIAN_DAY;
+        simulationEndEpoch += 2.0 * 1.4 * physical_constants::JULIAN_DAY;
         break;
     case 1:
-        simulationEndEpoch += 0.1125 * physical_constants::JULIAN_DAY;
+        simulationEndEpoch += 2.0 * 0.1125 * physical_constants::JULIAN_DAY;
         break;
     }
 
@@ -248,7 +248,7 @@ int main( )
 
     // Simulation times
     const double simulationConstantStepSize = 0.05; // 20 Hz
-    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.005; // 200 Hz
+    const double simulationConstantStepSizeDuringAtmosphericPhase = 0.05; // 200 Hz
     const unsigned int ratioOfOnboardOverSimulatedTimes = 1;
     const double onboardComputerRefreshStepSize = simulationConstantStepSize * ratioOfOnboardOverSimulatedTimes; // seconds
     const double onboardComputerRefreshStepSizeDuringAtmosphericPhase =
@@ -381,7 +381,8 @@ int main( )
     boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( proportionalGain, integralGain, derivativeGain );
 
     // Create guidance system object
-    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
+    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >(
+                255.0e3, 320.0e3, 2800.0 / 2.0, 500.0e3 / 2.0, 0.19, 2.0 );
 
     // Create unscented Kalman filter settings object for navigation
     boost::shared_ptr< FilterSettings< > > filteringSettings;
@@ -835,7 +836,7 @@ int main( )
 
         // Write other data to file
         writeDataMapToTextFile( accelerometerMeasurements, "accelerometerMeasurements.dat", outputPath );
-        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
+        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedMeasurements.dat", outputPath );
     }
 
     // Extract atmosphere data

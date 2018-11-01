@@ -323,7 +323,8 @@ int main( )
     boost::shared_ptr< ControlSystem > controlSystem = boost::make_shared< ControlSystem >( proportionalGain, integralGain, derivativeGain );
 
     // Create guidance system object
-    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >( 255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
+    boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >(
+                255.0e3, 320.0e3, 2800.0 / 2.0, 500.0e3 / 2.0, 0.19, 2.0 );
 
     // Create unscented Kalman filter settings object for navigation
     boost::shared_ptr< FilterSettings< > > filteringSettings;
@@ -840,7 +841,7 @@ int main( )
 
         // Write other data to file
         writeDataMapToTextFile( accelerometerMeasurements, "accelerometerMeasurements.dat", outputPath );
-        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedlMeasurements.dat", outputPath );
+        writeDataMapToTextFile( onboardExpectedMeasurements, "expectedMeasurements.dat", outputPath );
     }
 
     // Extract navigation data

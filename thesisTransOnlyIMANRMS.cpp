@@ -427,7 +427,7 @@ int main( )
 
             // Create guidance system object
             boost::shared_ptr< GuidanceSystem > guidanceSystem = boost::make_shared< GuidanceSystem >(
-                        255.0e3, 320.0e3, 2800.0, 500.0e3, 0.19, 2.0 );
+                        255.0e3, 320.0e3, 2800.0 / 2.0, 500.0e3 / 2.0, 0.19, 2.0 );
 
             // Create unscented Kalman filter settings object for navigation
             boost::shared_ptr< FilterSettings< > > filteringSettings;
