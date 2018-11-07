@@ -93,7 +93,7 @@ int main( )
 
     // Set simulation time settings
     const double simulationStartEpoch = 7.0 * physical_constants::JULIAN_YEAR + 30.0 * 6.0 * physical_constants::JULIAN_DAY;
-    const double simulationEndEpoch = simulationStartEpoch + 1.0e2;//1.4 * physical_constants::JULIAN_DAY; // 0.1125
+    const double simulationEndEpoch = simulationStartEpoch + 1.4 * physical_constants::JULIAN_DAY;
 
     // Define body settings for simulation
     std::vector< std::string > bodiesToCreate;
@@ -160,12 +160,12 @@ int main( )
 
     // Set initial Keplerian elements for satellite
     Eigen::Vector6d initialStateInKeplerianElements;
-    initialStateInKeplerianElements( semiMajorAxisIndex ) = 26021000.0;
-    initialStateInKeplerianElements( eccentricityIndex ) = 0.859882;
-    initialStateInKeplerianElements( inclinationIndex ) = convertDegreesToRadians( 93.0 );
-    initialStateInKeplerianElements( longitudeOfAscendingNodeIndex ) = convertDegreesToRadians( 158.7 );
-    initialStateInKeplerianElements( argumentOfPeriapsisIndex ) = convertDegreesToRadians( 43.6 );
-    initialStateInKeplerianElements( trueAnomalyIndex ) = convertDegreesToRadians( 180.0 );
+    initialStateInKeplerianElements[ semiMajorAxisIndex ] = 26021000.0;
+    initialStateInKeplerianElements[ eccentricityIndex ] = 0.859882;
+    initialStateInKeplerianElements[ inclinationIndex ] = convertDegreesToRadians( 93.0 );
+    initialStateInKeplerianElements[ longitudeOfAscendingNodeIndex ] = convertDegreesToRadians( 158.7 );
+    initialStateInKeplerianElements[ argumentOfPeriapsisIndex ] = convertDegreesToRadians( 43.6 );
+    initialStateInKeplerianElements[ trueAnomalyIndex ] = convertDegreesToRadians( 180.0 );
 
     // Define initial translational state
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements( initialStateInKeplerianElements,
@@ -174,14 +174,20 @@ int main( )
     // Find quaternion of initial rotation
     Eigen::Matrix3d directionCosineMatrix = Eigen::Matrix3d::Zero( );
 
+    // Get state at periapsis
+    Eigen::Vector6d stateInKeplerianElementsAtPeriapsis = initialStateInKeplerianElements;
+    stateInKeplerianElementsAtPeriapsis[ trueAnomalyIndex ] = 0.0;
+    const Eigen::Vector6d translationalStateAtPeriapsis = convertKeplerianToCartesianElements( stateInKeplerianElementsAtPeriapsis,
+                                                                                               marsGravitationalParameter );
+
     // Find the trajectory x-axis unit vector
-    Eigen::Vector3d initialRadialVector = translationalInitialState.segment( 0, 3 );
-    Eigen::Vector3d xUnitVector = - ( translationalInitialState.segment( 3, 3 ) -
-                                      7.07763225880808e-05 * Eigen::Vector3d::UnitZ( ).cross( initialRadialVector ) ).normalized( );
+    Eigen::Vector3d radialVectorAtPeriapsis = translationalStateAtPeriapsis.segment( 0, 3 );
+    Eigen::Vector3d xUnitVector = ( translationalStateAtPeriapsis.segment( 3, 3 ) -
+                                    9.5428235339854e-06 * Eigen::Vector3d::UnitZ( ).cross( radialVectorAtPeriapsis ) ).normalized( );
     directionCosineMatrix.col( 0 ) = xUnitVector;
 
     // Find trajectory z-axis unit vector
-    Eigen::Vector3d zUnitVector = initialRadialVector.normalized( );
+    Eigen::Vector3d zUnitVector = radialVectorAtPeriapsis.normalized( );
     zUnitVector -= zUnitVector.dot( xUnitVector ) * xUnitVector;
     directionCosineMatrix.col( 2 ) = zUnitVector;
 
@@ -260,9 +266,10 @@ int main( )
     onboardAerodynamicCoefficients[ 0 ] = 1.9;
 
     // Controller gains
-    Eigen::Vector3d proportionalGain = Eigen::Vector3d::Constant( 1.0e-5 );
+    Eigen::Vector3d proportionalGain;// = Eigen::Vector3d::Constant( 1.0e-3 );
+    proportionalGain << 1.0e-3, 1.0e-3, 1.0e-1;
     Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );
-    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.05 );
+    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
