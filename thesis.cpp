@@ -82,7 +82,7 @@ int main( )
     const bool useUnscentedKalmanFilter = true;
 
     // Output path
-    std::string outputPath = getOutputPath( );
+    std::string outputPath = getOutputPath( "low" );
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////     CREATE ENVIRONMENT AND VEHICLE       //////////////////////////////////////////////////////
@@ -171,32 +171,10 @@ int main( )
     const Eigen::Vector6d translationalInitialState = convertKeplerianToCartesianElements( initialStateInKeplerianElements,
                                                                                            marsGravitationalParameter );
 
-    // Find quaternion of initial rotation
-    Eigen::Matrix3d directionCosineMatrix = Eigen::Matrix3d::Zero( );
-
-    // Get state at periapsis
-    Eigen::Vector6d stateInKeplerianElementsAtPeriapsis = initialStateInKeplerianElements;
-    stateInKeplerianElementsAtPeriapsis[ trueAnomalyIndex ] = 0.0;
-    const Eigen::Vector6d translationalStateAtPeriapsis = convertKeplerianToCartesianElements( stateInKeplerianElementsAtPeriapsis,
-                                                                                               marsGravitationalParameter );
-
-    // Find the trajectory x-axis unit vector
-    Eigen::Vector3d radialVectorAtPeriapsis = translationalStateAtPeriapsis.segment( 0, 3 );
-    Eigen::Vector3d xUnitVector = ( translationalStateAtPeriapsis.segment( 3, 3 ) -
-                                    9.5428235339854e-06 * Eigen::Vector3d::UnitZ( ).cross( radialVectorAtPeriapsis ) ).normalized( );
-    directionCosineMatrix.col( 0 ) = xUnitVector;
-
-    // Find trajectory z-axis unit vector
-    Eigen::Vector3d zUnitVector = radialVectorAtPeriapsis.normalized( );
-    zUnitVector -= zUnitVector.dot( xUnitVector ) * xUnitVector;
-    directionCosineMatrix.col( 2 ) = zUnitVector;
-
-    // Find body-fixed y-axis unit vector
-    directionCosineMatrix.col( 1 ) = zUnitVector.cross( xUnitVector );
-
     // Define initial rotational state
     Eigen::Vector7d rotationalInitialState = Eigen::Vector7d::Zero( );
-    Eigen::Vector4d initialQuaternion = linear_algebra::convertQuaternionToVectorFormat( Eigen::Quaterniond( directionCosineMatrix ) );
+    Eigen::Vector4d initialQuaternion;
+    initialQuaternion << 0.907147204495396, -0.102273166055931, -0.383333270996831, -0.140281353087404;
     rotationalInitialState.segment( 0, 4 ) = initialQuaternion;
 
     // Simulation times
@@ -266,10 +244,12 @@ int main( )
     onboardAerodynamicCoefficients[ 0 ] = 1.9;
 
     // Controller gains
-    Eigen::Vector3d proportionalGain;// = Eigen::Vector3d::Constant( 1.0e-3 );
-    proportionalGain << 1.0e-3, 1.0e-3, 1.0e-1;
-    Eigen::Vector3d integralGain = Eigen::Vector3d::Constant( 0.0 );
-    Eigen::Vector3d derivativeGain = Eigen::Vector3d::Constant( 0.0 );
+    Eigen::Vector3d proportionalGain;
+    proportionalGain << 1.5e1, 2.25e1, 1.25e1; // 1.5e1, 2.25e1, 1.25e1
+    Eigen::Vector3d integralGain;
+    integralGain << 3.75e0, 1.75e1, 5.0e0; // 3.75e0, 1.75e1, 5.0e0
+    Eigen::Vector3d derivativeGain;
+    derivativeGain << 7.5e0, 2.0e1, 1.0e1; // 7.5e0, 2.0e1, 1.0e1
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////            DEFINE ONBOARD MODEL          //////////////////////////////////////////////////////
@@ -525,6 +505,8 @@ int main( )
                                           local_dynamic_pressure_dependent_variable, "Satellite", "Mars" ) );
     dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
                                           local_aerodynamic_heat_rate_dependent_variable, "Satellite", "Mars" ) );
+    dependentVariablesList.push_back( boost::make_shared< SingleDependentVariableSaveSettings >(
+                                          aerodynamic_force_coefficients_dependent_variable, "Satellite", "Mars" ) );
 
     // Create propagation settings for translational dynamics
     boost::shared_ptr< TranslationalStatePropagatorSettings< > > translationalPropagatorSettings =
@@ -736,7 +718,7 @@ int main( )
     // Write propagation history to files
     writeDataMapToTextFile( cartesianTranslationalIntegrationResult, "cartesianPropagated.dat", outputPath );
     writeDataMapToTextFile( keplerianTranslationalIntegrationResult, "keplerianPropagated.dat", outputPath );
-    writeDataMapToTextFile( rotationalIntegrationResult, "rotationalPropagated.dat", getOutputPath( ) );
+    writeDataMapToTextFile( rotationalIntegrationResult, "rotationalPropagated.dat", outputPath );
     writeDataMapToTextFile( dependentVariablesResults, "dependentVariables.dat", outputPath );
 
     // Get estimated states
@@ -782,6 +764,7 @@ int main( )
     writeDataMapToTextFile( cartesianTranslationalEstimationResult, "cartesianEstimated.dat", outputPath );
     writeDataMapToTextFile( keplerianTranslationalEstimationResult, "keplerianEstimated.dat", outputPath );
     writeDataMapToTextFile( rotationalEstimationResult, "rotationalEstimated.dat", outputPath );
+    writeDataMapToTextFile( controlTorques, "controlTorques.dat", outputPath );
 
     // Extract commanded quaternion states
     std::map< unsigned int, Eigen::Vector4d > historyOfCommandedQuaternionStates = controlSystem->getHistoryOfCommandedQuaternions( );
@@ -818,8 +801,6 @@ int main( )
 
     // Get estimated accelerometer errors
     Eigen::Vector3d estimatedAccelerometerErrors = navigationSystem->getEstimatedAccelerometerErrors( );
-    std::cout << "Acc. Error: " << estimatedAccelerometerErrors.transpose( ) << std::endl;
-    std::cout << "Gyr. Error: " << navigationSystem->getEstimatedGyroscopeErrors( ).transpose( ) << std::endl;
 
     // Measurements
     if ( extractMeasurementResults )
@@ -880,5 +861,6 @@ int main( )
 
     // Final statement
     // The exit code EXIT_SUCCESS indicates that the program was successfully executed
+    std::cout << std::endl << "Results have been written to files." << std::endl;
     return EXIT_SUCCESS;
 }
